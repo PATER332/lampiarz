@@ -1,0 +1,7 @@
+Popielny Dzwon — czcionki
+
+pagella-*.woff  TeX Gyre Pagella (GUST e-foundry), GUST Font License (LPPL-based, free to use and redistribute)
+chorus.woff     TeX Gyre Chorus  (GUST e-foundry), GUST Font License
+
+Pliki są podzbiorami (łaciński, polskie znaki, interpunkcja) wygenerowanymi narzędziem fontTools/pyftsubset.
+https://www.gust.org.pl/projects/e-foundry/tex-gyre
