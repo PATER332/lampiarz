@@ -1,55 +1,91 @@
-import { Component, StrictMode, type ErrorInfo, type ReactNode } from 'react';
+import { Component, StrictMode, type ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
 import './styles.css';
-import { App } from './ui/App';
-import { clearRun } from './save/storage';
+import { Footer, Header, ToastHost } from './components';
+import { Discover, Favorites, GameDetail, Home, Library, Newest, NotFound, Privacy } from './pages';
+import { Player } from './Player';
+import { useLocation } from './router';
 
-class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
+function App() {
+  const { route, pathname } = useLocation();
+  if (route.name === 'play') {
+    return (
+      <>
+        <Player slug={route.slug} />
+        <ToastHost />
+      </>
+    );
+  }
+  let page: ReactNode;
+  switch (route.name) {
+    case 'home':
+      page = <Home />;
+      break;
+    case 'library':
+      page = <Library />;
+      break;
+    case 'discover':
+      page = <Discover />;
+      break;
+    case 'new':
+      page = <Newest />;
+      break;
+    case 'favorites':
+      page = <Favorites />;
+      break;
+    case 'game':
+      page = <GameDetail slug={route.slug} />;
+      break;
+    case 'privacy':
+      page = <Privacy />;
+      break;
+    default:
+      page = <NotFound />;
+  }
+  return (
+    <>
+      <a href="#main" className="skip">
+        Przejdź do treści
+      </a>
+      <Header />
+      <main id="main" key={pathname} tabIndex={-1}>
+        {page}
+      </main>
+      <Footer />
+      <ToastHost />
+    </>
+  );
+}
+
+class Boundary extends Component<{ children: ReactNode }, { error: Error | null }> {
   state = { error: null as Error | null };
   static getDerivedStateFromError(error: Error) {
     return { error };
   }
-  componentDidCatch(error: Error, info: ErrorInfo) {
-    console.error('LAMPIARZ crashed:', error, info.componentStack);
-  }
   render() {
     if (!this.state.error) return this.props.children;
     return (
-      <div className="overlay">
-        <div className="panel modal" role="alertdialog" aria-labelledby="crash-title">
-          <p className="eyebrow">Błąd</p>
-          <h2 id="crash-title">Wiatr zgasił wszystkie latarnie</h2>
-          <p className="muted">Gra napotkała nieoczekiwany błąd. Twój profil jest bezpieczny. Możesz odświeżyć stronę albo — jeśli błąd się powtarza — porzucić bieżącą noc.</p>
-          <p className="muted" style={{ fontSize: 13 }}>
-            {String(this.state.error.message).slice(0, 200)}
-          </p>
-          <div className="modal-actions">
-            <button
-              className="btn danger"
-              onClick={() => {
-                clearRun();
-                location.reload();
-              }}
-            >
-              Porzuć noc i odśwież
-            </button>
-            <button className="btn primary" onClick={() => location.reload()}>
-              Odśwież
-            </button>
-          </div>
-        </div>
+      <div className="wrap notfound">
+        <span className="label" style={{ color: 'var(--danger)' }}>
+          Błąd
+        </span>
+        <h1 style={{ fontSize: 48 }}>Coś poszło nie tak</h1>
+        <p className="lead">Odśwież stronę. Jeśli problem wraca, wyczyść dane witryny w przeglądarce.</p>
+        <button className="btn primary" onClick={() => location.reload()}>
+          Odśwież
+        </button>
       </div>
     );
   }
 }
 
-const root = document.getElementById('root');
-if (root) {
-  createRoot(root).render(
+const el = document.getElementById('evgames-root');
+if (el) {
+  createRoot(el).render(
     <StrictMode>
-      <ErrorBoundary>
+      <Boundary>
         <App />
-      </ErrorBoundary>
+      </Boundary>
     </StrictMode>,
   );
 }

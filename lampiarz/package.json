@@ -1,14 +1,15 @@
 {
-  "name": "lampiarz",
+  "name": "evgames",
   "private": true,
   "version": "1.0.0",
-  "description": "LAMPIARZ — taktyczny roguelite o światle i mroku. Gra przeglądarkowa single-player.",
+  "description": "EVGAMES — platforma gier przeglądarkowych: Lampiarz i Popielny Dzwon.",
   "type": "module",
   "scripts": {
     "build": "node build.mjs",
-    "dev": "node build.mjs --serve",
+    "dev": "node build.mjs --watch & node tools/serve.mjs",
+    "preview": "node build.mjs && node tools/serve.mjs",
     "typecheck": "tsc --noEmit",
-    "test": "tsx --test tests/*.test.ts"
+    "test": "tsx --test tests/*.test.ts games/*/tests/*.test.ts"
   },
   "dependencies": {
     "react": "^19.2.0",
