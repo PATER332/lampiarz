@@ -1,0 +1,148 @@
+// Action-based input. The simulation only sees actions; keyboard / touch / tests feed them.
+
+export type Action =
+  | 'left'
+  | 'right'
+  | 'up'
+  | 'down'
+  | 'jump'
+  | 'dash'
+  | 'attack'
+  | 'special'
+  | 'interact'
+  | 'heal'
+  | 'inventory'
+  | 'pause';
+
+export const ACTIONS: { id: Action; label: string }[] = [
+  { id: 'left', label: 'Ruch w lewo' },
+  { id: 'right', label: 'Ruch w prawo' },
+  { id: 'up', label: 'Góra (celowanie, drabiny)' },
+  { id: 'down', label: 'Dół (zeskok z kładki)' },
+  { id: 'jump', label: 'Skok / podwójny skok' },
+  { id: 'dash', label: 'Zryw / unik' },
+  { id: 'attack', label: 'Atak (przytrzymaj: atak naładowany)' },
+  { id: 'special', label: 'Umiejętność specjalna' },
+  { id: 'interact', label: 'Interakcja' },
+  { id: 'heal', label: 'Nanoapteczka (leczenie)' },
+  { id: 'inventory', label: 'Ekwipunek' },
+  { id: 'pause', label: 'Pauza' },
+];
+
+export type KeyMap = Record<Action, string[]>;
+
+export const DEFAULT_KEYS: KeyMap = {
+  left: ['KeyA', 'ArrowLeft'],
+  right: ['KeyD', 'ArrowRight'],
+  up: ['KeyW', 'ArrowUp'],
+  down: ['KeyS', 'ArrowDown'],
+  jump: ['Space'],
+  dash: ['ShiftLeft', 'ShiftRight'],
+  attack: ['KeyJ'],
+  special: ['KeyK'],
+  interact: ['KeyE'],
+  heal: ['KeyQ'],
+  inventory: ['KeyI'],
+  pause: ['Escape'],
+};
+
+export function keyLabel(code: string): string {
+  if (code.startsWith('Key')) return code.slice(3);
+  if (code.startsWith('Digit')) return code.slice(5);
+  const map: Record<string, string> = {
+    Space: 'Spacja',
+    ShiftLeft: 'Shift',
+    ShiftRight: 'Prawy Shift',
+    ArrowLeft: '←',
+    ArrowRight: '→',
+    ArrowUp: '↑',
+    ArrowDown: '↓',
+    Escape: 'Esc',
+    Enter: 'Enter',
+    ControlLeft: 'Ctrl',
+    ControlRight: 'Prawy Ctrl',
+    AltLeft: 'Alt',
+    Tab: 'Tab',
+    Backspace: 'Backspace',
+  };
+  return map[code] ?? code;
+}
+
+export class Input {
+  held = new Set<Action>();
+  pressed = new Set<Action>();
+  released = new Set<Action>();
+
+  press(a: Action) {
+    if (!this.held.has(a)) this.pressed.add(a);
+    this.held.add(a);
+  }
+  release(a: Action) {
+    if (this.held.has(a)) this.released.add(a);
+    this.held.delete(a);
+  }
+  /** Call once after every simulation step. */
+  endStep() {
+    this.pressed.clear();
+    this.released.clear();
+  }
+  clear() {
+    for (const a of [...this.held]) this.release(a);
+    this.endStep();
+  }
+  down(a: Action) {
+    return this.held.has(a);
+  }
+  hit(a: Action) {
+    return this.pressed.has(a);
+  }
+  up(a: Action) {
+    return this.released.has(a);
+  }
+}
+
+/** Keyboard → actions, with rebinding and without letting game keys scroll the page. */
+export class Keyboard {
+  private byCode = new Map<string, Action[]>();
+  onAnyKey: ((code: string) => boolean) | null = null; // used by the rebinding screen
+  onPause: (() => void) | null = null;
+  enabled = true;
+
+  constructor(
+    private input: Input,
+    keys: KeyMap,
+  ) {
+    this.setKeys(keys);
+    window.addEventListener('keydown', this.down, { passive: false });
+    window.addEventListener('keyup', this.up);
+    window.addEventListener('blur', () => this.input.clear());
+  }
+
+  setKeys(keys: KeyMap) {
+    this.byCode.clear();
+    for (const a of Object.keys(keys) as Action[]) for (const c of keys[a]) this.byCode.set(c, [...(this.byCode.get(c) ?? []), a]);
+  }
+
+  private down = (e: KeyboardEvent) => {
+    if (this.onAnyKey) {
+      e.preventDefault();
+      if (this.onAnyKey(e.code)) this.onAnyKey = null;
+      return;
+    }
+    const acts = this.byCode.get(e.code);
+    if (!acts) return;
+    // never let Space / arrows / Tab scroll the platform page around the game
+    e.preventDefault();
+    if (!this.enabled) return;
+    for (const a of acts) {
+      if (a === 'pause' && !e.repeat) this.onPause?.();
+      this.input.press(a);
+    }
+  };
+
+  private up = (e: KeyboardEvent) => {
+    const acts = this.byCode.get(e.code);
+    if (!acts) return;
+    for (const a of acts) this.input.release(a);
+  };
+}

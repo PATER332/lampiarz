@@ -1,0 +1,10 @@
+Fonts bundled with EVGAMES (subsets converted to WOFF):
+
+- Inter (inter-*.woff) — Copyright 2016 The Inter Project Authors (https://github.com/rsms/inter).
+  SIL Open Font License 1.1 — https://openfontlicense.org
+- TeX Gyre Heros Condensed Bold (heros-cn-bold.woff), used as "EV Display" — Copyright 2007–2009 GUST e-foundry.
+  GUST Font License — https://www.gust.org.pl/projects/e-foundry/licenses
+- GNU Unifont (unifont.woff), used as "EV Pixel" — Copyright Roman Czyborra, Paul Hardy et al.
+  SIL Open Font License 1.1 (dual-licensed with GPL v2+ with font embedding exception) — https://unifoundry.com/unifont/
+
+The Lampiarz game ships its own font (Lora) with its license in games/lampiarz/public/fonts/OFL.txt.

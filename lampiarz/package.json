@@ -2,7 +2,7 @@
   "name": "evgames",
   "private": true,
   "version": "1.0.0",
-  "description": "EVGAMES — platforma gier przeglądarkowych: Lampiarz, RANDOM CHAOS, Skrzynkomat i ECHOBOUND.",
+  "description": "EVGAMES — platforma gier przeglądarkowych: Lampiarz, RANDOM CHAOS, Skrzynkomat, ECHOBOUND i VOIDRUNNER.",
   "type": "module",
   "scripts": {
     "build": "node build.mjs",

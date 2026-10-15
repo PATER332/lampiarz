@@ -27,9 +27,9 @@ test('search, categories and featured game', () => {
   assert.equal(searchGames({ q: 'nie-ma-takiej-gry' }).length, 0);
   assert.equal(searchGames({ category: 'puzzle' })[0]?.slug, 'echobound');
   const counts = categoryCounts();
-  assert.equal(counts.roguelite, 1);
+  assert.equal(counts.roguelite, 2);
   assert.equal(counts.horror, 0);
-  assert.equal(counts.akcja, 2);
+  assert.equal(counts.akcja, 3);
   assert.equal(counts.imprezowe, 1);
   assert.equal(counts.symulacje, 1);
   assert.equal(searchGames({ q: 'skrzynkomat' })[0]?.slug, 'skrzynkomat');
@@ -39,7 +39,8 @@ test('search, categories and featured game', () => {
   assert.equal(searchGames({ q: '2 graczy' })[0]?.slug, 'random-chaos');
   assert.equal(searchGames({ category: 'imprezowe' })[0]?.slug, 'random-chaos');
   assert.equal(counts.puzzle, 1);
-  assert.equal(counts.przygodowe, 1);
+  assert.equal(counts.przygodowe, 2);
+  assert.equal(searchGames({ q: 'voidrunner' })[0]?.slug, 'voidrunner');
   assert.equal(searchGames({ q: 'echobound' })[0]?.slug, 'echobound');
   assert.equal(searchGames({ q: 'echa czasu' })[0]?.slug, 'echobound');
   assert.equal(Object.values(counts).reduce((a, b) => a + b, 0) >= publishedGames().length, true);
@@ -47,7 +48,7 @@ test('search, categories and featured game', () => {
   assert.equal(findGame('nope'), undefined);
   // removed titles are gone from the site
   for (const slug of ['popielny-dzwon', 'night-shift', 'backrooms-the-descent', 'babcia']) assert.equal(findGame(slug), undefined);
-  assert.deepEqual(publishedGames().map((g) => g.slug).sort(), ['echobound', 'lampiarz', 'random-chaos', 'skrzynkomat']);
+  assert.deepEqual(publishedGames().map((g) => g.slug).sort(), ['echobound', 'lampiarz', 'random-chaos', 'skrzynkomat', 'voidrunner']);
 });
 
 test('routes parse', () => {
@@ -58,6 +59,7 @@ test('routes parse', () => {
   assert.deepEqual(parse('/play/random-chaos'), { name: 'play', slug: 'random-chaos' });
   assert.deepEqual(parse('/play/skrzynkomat'), { name: 'play', slug: 'skrzynkomat' });
   assert.deepEqual(parse('/play/echobound'), { name: 'play', slug: 'echobound' });
+  assert.deepEqual(parse('/play/voidrunner'), { name: 'play', slug: 'voidrunner' });
   assert.deepEqual(parse('/x/y'), { name: 'notfound' });
 });
 
