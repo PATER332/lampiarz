@@ -5,10 +5,9 @@ Platforma gier przeglądarkowych. Tytuły:
 - **Lampiarz** — taktyczny roguelite o świetle i mroku (`/play/lampiarz`),
 - **RANDOM CHAOS** — imprezowa gra dla 2 osób na jednej klawiaturze: turniej 8 minigier z 12 modyfikatorami chaosu (`/play/random-chaos`),
 - **Skrzynkomat** — symulator otwierania skrzynek za wirtualne złotówki: ruletka, bitwy z botami, ekwipunek, upgrader, kontrakty (`/play/skrzynkomat`),
-- **BABCIA: Dom bez wyjścia** — horror 3D (three.js): pięć nocy, cztery zabezpieczenia drzwi i babcia, która słyszy wszystko (`/play/babcia`),
 - **ECHOBOUND** — pixelartowa platformówka 2D z echami czasu: 11 obszarów, 2 postacie, zagadki z nagrywaniem własnych ruchów (`/play/echobound`).
 
-Gry Popielny Dzwon, NIGHT SHIFT: 03:17 i BACKROOMS: THE DESCENT zostały zdjęte ze strony. Ich źródła leżą w `archiwum/` (poza `games/`, więc build ich nie buduje i nie publikuje); żeby którąś przywrócić, przenieś jej folder z powrotem do `games/`, grafiki z `archiwum/<slug>/_platform_img/<slug>` do `public/img/games/` i wpis z `archiwum/wpisy-katalogu.ts.txt` do tablicy `GAMES` w `src/catalog.ts`.
+Gry Popielny Dzwon, NIGHT SHIFT: 03:17, BACKROOMS: THE DESCENT i BABCIA: Dom bez wyjścia zostały zdjęte ze strony. Ich źródła leżą w `archiwum/` (poza `games/`, więc build ich nie buduje i nie publikuje); żeby którąś przywrócić, przenieś jej folder z powrotem do `games/`, grafiki z `archiwum/<slug>/_platform_img/<slug>` do `public/img/games/` i wpis z `archiwum/wpisy-katalogu.ts.txt` do tablicy `GAMES` w `src/catalog.ts`.
 
 Wszystko działa po stronie przeglądarki: bez backendu, kont, bazy danych i kluczy API. Ulubione, historia i zapisy gier trzymane są w `localStorage`.
 
@@ -27,7 +26,6 @@ public/               czcionki, favicon, grafiki (img/games/<slug>/…), og.jpg
 games/
   lampiarz/           gra Lampiarz — źródła, testy i narzędzia
   random-chaos/       gra RANDOM CHAOS (2 graczy) — własny silnik 2D (Canvas), testy (tests/game.test.ts, tests/e2e.py), README
-  babcia/             gra BABCIA: Dom bez wyjścia — React + three.js, style Tailwind skompilowane do src/index.css (tools/build-css.mjs), README
   echobound/          gra ECHOBOUND — React + Canvas, style Tailwind skompilowane do src/index.css (tools/build-css.mjs), README
   skrzynkomat/        gra Skrzynkomat — oryginalna gra w jednym pliku HTML rozdzielona na index.html + src/ (bez zmian w logice), README
 archiwum/             zdjęte gry (nie są budowane ani publikowane)
@@ -45,13 +43,12 @@ dist/index.html, dist/assets/…      platforma
 dist/g/lampiarz/index.html, …       gra, zbudowana ze ścieżką bazową /g/lampiarz/
 dist/g/random-chaos/…               druga gra, ścieżka bazowa /g/random-chaos/
 dist/g/skrzynkomat/…                trzecia gra, ścieżka bazowa /g/skrzynkomat/
-dist/g/babcia/…                     czwarta gra, ścieżka bazowa /g/babcia/
-dist/g/echobound/…                  piąta gra, ścieżka bazowa /g/echobound/
+dist/g/echobound/…                  czwarta gra, ścieżka bazowa /g/echobound/
 ```
 
 ## Jak zintegrowane są gry
 
-Każda gra jest osobnym buildem (Lampiarz pod `/g/lampiarz/`, RANDOM CHAOS pod `/g/random-chaos/`, Skrzynkomat pod `/g/skrzynkomat/`, BABCIA pod `/g/babcia/`, ECHOBOUND pod `/g/echobound/`). Gry nie dzielą kodu ani stylów, a ich klucze `localStorage` mają własne przedrostki (`lampiarz.*`, `randomchaos.*`, `skrzynkomat.*`, `echobound.*`) — test `tests/catalog.test.ts` pilnuje, żeby się nie pokrywały.
+Każda gra jest osobnym buildem (Lampiarz pod `/g/lampiarz/`, RANDOM CHAOS pod `/g/random-chaos/`, Skrzynkomat pod `/g/skrzynkomat/`, ECHOBOUND pod `/g/echobound/`). Gry nie dzielą kodu ani stylów, a ich klucze `localStorage` mają własne przedrostki (`lampiarz.*`, `randomchaos.*`, `skrzynkomat.*`, `echobound.*`) — test `tests/catalog.test.ts` pilnuje, żeby się nie pokrywały.
 
 Lampiarz jest osobnym buildem w tej samej domenie (`/g/lampiarz/`). Strona `/play/lampiarz` wyświetla go w ramce z tej samej domeny, nad nią jest pasek EVGAMES: powrót, biblioteka, ulubione, przeładowanie, pełny ekran.
 
@@ -99,4 +96,4 @@ Gra w przygotowaniu: ustaw `status: 'coming-soon'` — strona gry pokaże „Wkr
 
 ## Licencje
 
-Czcionki: Inter (OFL), TeX Gyre Heros Condensed (GUST Font License), GNU Unifont (OFL) — szczegóły w `public/fonts/LICENSES.txt`. Lampiarz używa czcionki Lora (OFL). RANDOM CHAOS używa Inter (OFL) — `games/random-chaos/public/fonts/LICENSES.txt`; postacie, areny, efekty, dźwięki i muzyka są rysowane i syntezowane w kodzie. Skrzynkomat ładuje czcionki Rajdhani, Barlow i JetBrains Mono z Google Fonts (opisane na stronie Prywatność); jego grafiki broni i skrzynek to SVG generowane w kodzie. BABCIA używa biblioteki three.js (MIT, zależność `three` w package.json); jej modele, tekstury i dźwięki są generowane w kodzie. ECHOBOUND ładuje czcionki Cinzel, Rajdhani i Press Start 2P z Google Fonts (opisane na stronie Prywatność); jego pixel art, efekty i dźwięki powstają w kodzie. Grafiki gier to zrzuty ekranu z samej gry.
+Czcionki: Inter (OFL), TeX Gyre Heros Condensed (GUST Font License), GNU Unifont (OFL) — szczegóły w `public/fonts/LICENSES.txt`. Lampiarz używa czcionki Lora (OFL). RANDOM CHAOS używa Inter (OFL) — `games/random-chaos/public/fonts/LICENSES.txt`; postacie, areny, efekty, dźwięki i muzyka są rysowane i syntezowane w kodzie. Skrzynkomat ładuje czcionki Rajdhani, Barlow i JetBrains Mono z Google Fonts (opisane na stronie Prywatność); jego grafiki broni i skrzynek to SVG generowane w kodzie. (BABCIA, w archiwum, używa biblioteki three.js — przy przywracaniu dodaj z powrotem zależności `three` i `@types/three` do package.json.) ECHOBOUND ładuje czcionki Cinzel, Rajdhani i Press Start 2P z Google Fonts (opisane na stronie Prywatność); jego pixel art, efekty i dźwięki powstają w kodzie. Grafiki gier to zrzuty ekranu z samej gry.
