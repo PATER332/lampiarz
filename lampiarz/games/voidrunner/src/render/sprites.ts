@@ -68,7 +68,12 @@ export function drawPlayer(c: Ctx, p: Player, cos: CosmeticId, weapon: WeaponId,
     squash = 3;
     armAng = 0.3;
   } else if (a === 'victory') armAng = -1.6;
-  else if (a === 'wall') {
+  else if (a === 'block') {
+    // braced stance, forearm raised in front of the visor
+    armAng = -0.9;
+    squash = 1;
+    lean = -1;
+  } else if (a === 'wall') {
     // pressed against the wall behind, one hand dragging along it, knees bent
     lean = -1;
     legA = 0.6;

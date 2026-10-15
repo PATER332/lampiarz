@@ -3,7 +3,7 @@ import type { ObjectKind } from '../world/expedition';
 import type { Body } from '../world/physics';
 import type { UpgradeId } from './data';
 
-export type PlayerAnim = 'wall' | 'idle' | 'run' | 'jump' | 'fall' | 'land' | 'attack' | 'charge' | 'chargeAtk' | 'dash' | 'hurt' | 'dead' | 'interact' | 'victory' | 'special' | 'heal';
+export type PlayerAnim = 'block' | 'wall' | 'idle' | 'run' | 'jump' | 'fall' | 'land' | 'attack' | 'charge' | 'chargeAtk' | 'dash' | 'hurt' | 'dead' | 'interact' | 'victory' | 'special' | 'heal';
 
 export interface AttackState {
   kind: 'combo' | 'charged' | 'special' | 'shot' | 'down' | 'up';
@@ -54,6 +54,16 @@ export interface Player extends Body {
   counterT: number;
   /** id of the moving platform the player stands on, -1 = none */
   ride: number;
+  /** holding the guard up */
+  blocking: boolean;
+  /** how long the guard has been up (parry window at the start) */
+  blockT: number;
+  /** cooldown after a guard break */
+  blockCd: number;
+  /** flash of the shield after absorbing a hit (renderer) */
+  blockFx: number;
+  /** a parry happened (renderer flash) */
+  parryFx: number;
 }
 
 export interface Enemy extends Body {
@@ -211,6 +221,8 @@ export interface RunState {
   comboT: number;
   bestCombo: number;
   perfect: number;
+  parries: number;
+  blocks: number;
 }
 
 export type GameEvent =

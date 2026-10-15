@@ -99,7 +99,7 @@ export class Game {
     this.weapon = this.meta.weapon;
     this.cosmetic = this.meta.cosmetic;
     this.tutorial = !this.meta.tutorialDone;
-    this.run = { seed, area: 0, room: 0, upgrades: {}, fragments: 0, kills: 0, bosses: 0, time: 0, damageDealt: 0, combo: 0, comboT: 0, bestCombo: 0, perfect: 0 };
+    this.run = { seed, area: 0, room: 0, upgrades: {}, fragments: 0, kills: 0, bosses: 0, time: 0, damageDealt: 0, combo: 0, comboT: 0, bestCombo: 0, perfect: 0, parries: 0, blocks: 0 };
     this.plans.clear();
     this.rng = new Rng(seed ^ 0xabcdef);
     this.over = null;
@@ -116,7 +116,7 @@ export class Game {
     this.weapon = s.weapon;
     this.cosmetic = s.cosmetic;
     this.tutorial = false;
-    this.run = { seed: s.seed, area: s.area, room: s.room, upgrades: { ...s.upgrades }, fragments: s.fragments, kills: s.kills, bosses: s.bosses, time: s.time, damageDealt: 0, combo: 0, comboT: 0, bestCombo: 0, perfect: 0 };
+    this.run = { seed: s.seed, area: s.area, room: s.room, upgrades: { ...s.upgrades }, fragments: s.fragments, kills: s.kills, bosses: s.bosses, time: s.time, damageDealt: 0, combo: 0, comboT: 0, bestCombo: 0, perfect: 0, parries: 0, blocks: 0 };
     this.plans.clear();
     this.rng = new Rng(s.seed ^ (s.area * 977 + s.room * 131 + 7));
     this.over = null;
@@ -240,6 +240,11 @@ export class Game {
       dodgeUsed: false,
       counterT: 0,
       ride: -1,
+      blocking: false,
+      blockT: 0,
+      blockCd: 0,
+      blockFx: 0,
+      parryFx: 0,
     };
   }
 
@@ -450,6 +455,20 @@ export class Game {
     p.wallLock = Math.max(0, p.wallLock - dt);
     p.dashGrace = Math.max(0, p.dashGrace - dt);
     p.counterT = Math.max(0, p.counterT - dt);
+    p.blockCd = Math.max(0, p.blockCd - dt);
+    p.blockFx = Math.max(0, p.blockFx - dt);
+    p.parryFx = Math.max(0, p.parryFx - dt);
+    // ---- guard: hold the block key (not while dashing, attacking or healing)
+    const wantBlock = inp.down('block') && p.blockCd <= 0 && p.dashT <= 0 && p.healT <= 0 && (!p.attack || p.attack.kind === 'shot');
+    if (wantBlock) {
+      if (!p.blocking) {
+        p.blocking = true;
+        p.blockT = 0;
+        p.attack = null;
+        p.chargeT = 0;
+        this.audio.play('guard');
+      } else p.blockT += dt;
+    } else p.blocking = false;
     p.energy = Math.min(p.maxEnergy, p.energy + PLAYER.energyRegen * (1 + this.up('cell') * 0.4) * (1 + this.perm('energy') * 0.15) * dt);
     const left = inp.down('left');
     const right = inp.down('right');
@@ -497,6 +516,7 @@ export class Game {
     if (attacking) speed *= p.onGround ? 0.3 : 0.7;
     if (charging) speed *= 0.45;
     if (p.healT > 0) speed *= 0.3;
+    if (p.blocking) speed *= 0.35;
     const target = dir * speed;
     const slippery = this.weather === 'snow' && p.onGround;
     const acc = (p.onGround ? PLAYER.accelGround : PLAYER.accelAir) * (slippery ? 0.45 : 1);
@@ -618,6 +638,7 @@ export class Game {
     else if (p.attack) this.setAnim('attack');
     else if (charging) this.setAnim('charge');
     else if (p.healT > 0) this.setAnim('heal');
+    else if (p.blocking) this.setAnim('block');
     else if (p.interactT > 0) this.setAnim('interact');
     else if (p.sliding) this.setAnim('wall');
     else if (!p.onGround) this.setAnim(p.vy < 0 ? 'jump' : 'fall');
@@ -677,7 +698,7 @@ export class Game {
       if (p.chargeT >= this.chargeTime()) this.startCharged();
       p.chargeT = 0;
     }
-    if (inp.hit('attack') && p.healT <= 0) {
+    if (inp.hit('attack') && p.healT <= 0 && !p.blocking) {
       p.chargeT = 0.0001;
       if (w.shot) {
         if (p.shotCd <= 0) this.fireShot();
@@ -693,7 +714,7 @@ export class Game {
         this.startCombo(step);
       }
     }
-    if (inp.hit('special') && !p.attack && p.healT <= 0) {
+    if (inp.hit('special') && !p.attack && p.healT <= 0 && !p.blocking) {
       if (p.energy >= w.special.cost) this.startSpecial();
       else this.events.push({ type: 'toast', text: 'Za mało energii', color: '#7f9bff' });
     }
@@ -1001,6 +1022,74 @@ export class Game {
     if (e.elite && Math.random() < 0.35) this.pickups.push({ id: this.id(), x: e.x + e.w / 2, y: e.y, vx: 0, vy: -150, value: 20, kind: 'health', t: 0, grounded: false });
   }
 
+  /** Window at the start of a block in which a hit is parried instead of blocked. */
+  static PARRY_WINDOW = 0.2;
+
+  /** Resolves a hit against a raised guard. Returns true when the hit is fully stopped. */
+  private guard(dmg: number, srcX: number, src: { kind: 'melee' | 'projectile' | 'blast' | 'beam'; enemy?: Enemy; proj?: Projectile }) {
+    const p = this.player;
+    const pc = p.x + p.w / 2;
+    const cy = p.y + p.h / 2;
+    const parry = p.blockT <= Game.PARRY_WINDOW && src.kind !== 'beam';
+    if (parry) {
+      // parry: no cost, the attacker is stunned, bullets fly back, time slows for a moment
+      this.run.parries++;
+      p.parryFx = 0.35;
+      p.blockFx = 0.3;
+      p.iframes = Math.max(p.iframes, 0.35);
+      p.energy = Math.min(p.maxEnergy, p.energy + 15);
+      p.counterT = 1.2;
+      this.slowmo = Math.max(this.slowmo, 0.3);
+      this.hitstop = Math.max(this.hitstop, 0.06);
+      this.shake = Math.max(this.shake, 4);
+      this.audio.play('parry');
+      this.ring(pc + p.facing * 8, cy, '#ffffff', 26);
+      this.burst(pc + p.facing * 8, cy, 14, '#ffe066', 'spark', 260);
+      if (this.meta.settings.damageNumbers) this.floater(pc, p.y - 14, 'PAROWANIE!', '#ffe066');
+      if (src.enemy && !src.enemy.dead && src.enemy.type !== 'boss') {
+        const e = src.enemy;
+        e.stun = Math.max(e.stun, 1.3);
+        e.state = e.type === 'shield' ? 'recover' : e.state;
+        if (e.type === 'shield') e.guard = false;
+        e.hurtful = 0;
+        e.vx = p.facing * 160;
+        e.flash = 0.15;
+      }
+      if (src.proj) {
+        // reflect the bullet back at whoever fired it, stronger
+        const pr = src.proj;
+        pr.owner = 'player';
+        pr.vx = -pr.vx * 1.3 || p.facing * 260;
+        pr.vy = -pr.vy * 0.5;
+        pr.dmg = Math.round(pr.dmg * 1.5);
+        pr.life = Math.max(pr.life, 0.8);
+        pr.hit = new Set();
+      }
+      return true;
+    }
+    // regular block: the shield soaks the hit and costs energy; empty energy breaks the guard
+    const cost = Math.ceil(dmg * 0.6);
+    p.blockFx = 0.2;
+    if (src.proj) src.proj.life = 0;
+    if (p.energy >= cost) {
+      p.energy -= cost;
+      this.run.blocks++;
+      p.iframes = Math.max(p.iframes, 0.25);
+      p.vx = -p.facing * 90;
+      this.audio.play('block');
+      this.burst(pc + p.facing * 8, cy, 8, '#9fd8ff', 'spark', 180);
+      if (this.meta.settings.damageNumbers) this.floater(pc, p.y - 10, 'BLOK', '#9fd8ff');
+      return true;
+    }
+    // guard break: half the damage goes through and the guard is down for a second
+    p.blocking = false;
+    p.blockCd = 1.0;
+    this.events.push({ type: 'toast', text: 'Garda przełamana — brak energii', color: '#ff8a5a' });
+    this.audio.play('guardBreak');
+    this.damagePlayer(Math.max(1, Math.round(dmg * 0.5)), srcX, false);
+    return true;
+  }
+
   dropFragments(x: number, y: number, total: number) {
     let left = total;
     while (left > 0) {
@@ -1010,9 +1099,18 @@ export class Game {
     }
   }
 
-  damagePlayer(dmg: number, srcX: number, unavoidable = false) {
+  /**
+   * Hurts the player. `src` says what hit: enemy blows, projectiles, blasts and boss beams can be
+   * blocked from the front (Q); traps, hazard tiles and floor attacks cannot.
+   */
+  damagePlayer(dmg: number, srcX: number, unavoidable = false, src?: { kind: 'melee' | 'projectile' | 'blast' | 'beam'; enemy?: Enemy; proj?: Projectile }) {
     const p = this.player;
     if (p.dead || this.over) return;
+    if (!unavoidable && src && p.blocking && p.iframes <= 0) {
+      const pc = p.x + p.w / 2;
+      const front = Math.abs(srcX - pc) < 3 || Math.sign(srcX - pc) === p.facing;
+      if (front && this.guard(dmg, srcX, src)) return;
+    }
     // perfect dodge: a hit that lands during a dash triggers bullet-time and a counter window
     if (!unavoidable && (p.dashT > 0 || p.dashGrace > 0)) {
       if (!p.dodgeUsed) {
@@ -1136,8 +1234,9 @@ export class Game {
         const hb = { x: p.x + 1, y: p.y + 2, w: p.w - 2, h: p.h - 3 };
         if (pr.x + pr.r > hb.x && pr.x - pr.r < hb.x + hb.w && pr.y + pr.r > hb.y && pr.y - pr.r < hb.y + hb.h) {
           if (p.iframes <= 0) {
-            this.damagePlayer(pr.dmg, pr.x - pr.vx * 0.1);
-            pr.life = 0;
+            const before = pr.owner;
+            this.damagePlayer(pr.dmg, pr.x - pr.vx * 0.1, false, { kind: 'projectile', proj: pr });
+            if (pr.owner === before) pr.life = 0; // not reflected
           }
         }
       }
@@ -1157,7 +1256,7 @@ export class Game {
       this.breakTilesIn({ x: x - r / 2, y: y - r / 2, w: r, h: r });
     } else {
       const p = this.player;
-      if (Math.hypot(p.x + p.w / 2 - x, p.y + p.h / 2 - y) < r + 6) this.damagePlayer(dmg, x);
+      if (Math.hypot(p.x + p.w / 2 - x, p.y + p.h / 2 - y) < r + 6) this.damagePlayer(dmg, x, false, { kind: 'blast' });
     }
   }
 
@@ -1195,8 +1294,8 @@ export class Game {
           // generic telegraphed boss hazards: rectangle (or rotated beam) that hurts after `warn`
           if (h.t > h.warn && h.t < h.warn + h.active) {
             if (h.kind === 'beam' && h.len !== undefined && h.angle !== undefined) {
-              if (segmentHitsBox(h.x, h.y, h.x + Math.cos(h.angle) * h.len, h.y + Math.sin(h.angle) * h.len, (h.w || 10) / 2, p)) this.damagePlayer(h.dmg, h.x);
-            } else if (overlap(h, p)) this.damagePlayer(h.dmg, h.x + h.w / 2);
+              if (segmentHitsBox(h.x, h.y, h.x + Math.cos(h.angle) * h.len, h.y + Math.sin(h.angle) * h.len, (h.w || 10) / 2, p)) this.damagePlayer(h.dmg, h.x, false, { kind: 'beam' });
+            } else if (overlap(h, p)) this.damagePlayer(h.dmg, h.x + h.w / 2, false, h.kind === 'hline' ? { kind: 'beam' } : undefined);
           }
           if (h.kind === 'shockwave' && h.vx && h.t > h.warn) {
             h.x += h.vx * dt;

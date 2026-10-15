@@ -331,6 +331,31 @@ export class Renderer {
     }
     this.outline.draw(c, p.x + p.w / 2, p.y + p.h / 2 - 4, '#020308', (cc) => drawPlayer(cc, p, g.cosmetic, g.weapon, t, chargeK), p.hurtT > 0.12 ? 0.8 : 0, col);
 
+    // ---- energy shield while guarding (white rim = parry window)
+    if (p.blocking || p.blockFx > 0) {
+      const sx = p.x + p.w / 2 + p.facing * 9;
+      const sy = p.y + p.h / 2 - 2;
+      const parryWin = p.blocking && p.blockT <= 0.2;
+      const hit = Math.min(1, p.blockFx / 0.2);
+      c.save();
+      c.globalCompositeOperation = 'lighter';
+      const a0 = p.blocking ? 0.55 : 0.3 * hit;
+      // hexagon-ish plate made of short arcs
+      for (let i = 0; i < 3; i++) {
+        c.strokeStyle = rgba(i === 0 && (parryWin || p.parryFx > 0) ? '#ffffff' : col, a0 * (1 - i * 0.25) + hit * 0.3);
+        c.lineWidth = i === 0 ? 2 : 1;
+        c.beginPath();
+        c.arc(sx - p.facing * 6, sy, 13 - i * 3, p.facing > 0 ? -1.15 : Math.PI - 1.15, p.facing > 0 ? 1.15 : Math.PI + 1.15);
+        c.stroke();
+      }
+      for (let k = -2; k <= 2; k++) {
+        const an = (p.facing > 0 ? 0 : Math.PI) + k * 0.45;
+        px(c, sx - p.facing * 6 + Math.cos(an) * 13, sy + Math.sin(an) * 13, '#ffffff');
+      }
+      glow(c, sx, sy, 16 + hit * 10, p.parryFx > 0 ? '#ffe066' : col, 0.18 + hit * 0.35 + (parryWin ? 0.15 : 0));
+      c.restore();
+    }
+
     // ---- projectiles & effects
     c.save();
     c.globalCompositeOperation = 'lighter';

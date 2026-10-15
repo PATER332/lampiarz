@@ -277,7 +277,7 @@ export class App {
       <div class="hud-tl">
         <div class="bar hp"><i class="ghost" style="width:calc(${this.ghostHp * 100}% - 2px)"></i><i style="width:calc(${hpK * 100}% - 2px)"></i><b>${Math.ceil(p.hp)} / ${p.maxHp}</b></div>
         <div class="bar en"><i style="width:calc(${(p.energy / p.maxEnergy) * 100}% - 2px)"></i></div>
-        <div class="hud-meta"><div class="heals" title="Nanoapteczki (Q)">${heals}</div><span class="frag">${g.run.fragments}</span></div>
+        <div class="hud-meta"><div class="heals" title="Nanoapteczki (F)">${heals}</div><span class="frag">${g.run.fragments}</span></div>
       </div>
       <div class="hud-tr">
         <div class="area-name">${esc(area.name)}</div>
@@ -717,7 +717,7 @@ export class App {
       <h2>Sterowanie</h2>
       <p class="lead">${guide ? 'Pierwsza wyprawa. Tak sterujesz cyborgiem — w pierwszym pomieszczeniu tablice przypomną ci najważniejsze ruchy.' : 'Kliknij pole, żeby je zmienić, potem naciśnij nowy klawisz — albo kliknij pole „…” wybranym przyciskiem myszy (Esc anuluje). Atak działa domyślnie pod J, R i lewym przyciskiem myszy, umiejętność pod K i prawym przyciskiem.'}</p>
       <div class="keys-table">${rows}</div>
-      <p class="hint">W powietrzu SPACJA = podwójny skok. Atak: J, R albo lewy przycisk myszy (LPM) — przytrzymaj i puść = atak naładowany. Umiejętność: K albo prawy przycisk myszy (PPM). Zryw (SHIFT) daje chwilę nietykalności — zryw tuż przed trafieniem to <b>perfekcyjny unik</b> (spowolnienie czasu, energia i mocniejsza kontra).</p>
+      <p class="hint">W powietrzu SPACJA = podwójny skok. Atak: J, R albo lewy przycisk myszy (LPM) — przytrzymaj i puść = atak naładowany. Umiejętność: K albo prawy przycisk myszy (PPM). Q — obrona: przytrzymaj, żeby osłonić się tarczą z przodu (kosztuje energię); naciśnij Q tuż przed ciosem lub pociskiem — <b>parowanie</b> (bez kosztu, ogłusza wroga, odbija pociski). Zryw (SHIFT) daje chwilę nietykalności — zryw tuż przed trafieniem to <b>perfekcyjny unik</b> (spowolnienie czasu, energia i mocniejsza kontra).</p>
       <p class="hint">Przy ścianie: dociśnij kierunek, żeby się zsuwać, SPACJA = odbicie od ściany. W powietrzu ↓ + atak = cięcie w dół (odbija od wrogów, skrzyń i kolców), ↑ + atak = cięcie w górę. Tarczownika atakuj od tyłu albo przełam gardę atakiem naładowanym. Kolejne trafienia bez otrzymania obrażeń budują serię (co 10 — bonusowe Fragmenty).</p>
       <div class="row" style="margin-top:14px">
         ${guide ? '<button class="btn primary" data-act="close">Zaczynamy</button>' : '<button class="btn" data-act="defaultkeys">Przywróć domyślne</button><button class="btn primary" data-act="close">Gotowe</button>'}
@@ -980,6 +980,7 @@ export class App {
       ['tk', 'MOC', 'special'],
       ['te', 'E', 'interact'],
       ['th', 'LECZ', 'heal'],
+      ['tq', 'OBR', 'block'],
     ];
     this.touch.innerHTML = b.map(([cls, label, a]) => `<button class="${cls}" data-a="${a}" aria-label="${label}">${label}</button>`).join('') + '<button class="tp" data-pause="1" aria-label="Pauza">II</button>';
     this.touch.querySelectorAll<HTMLElement>('button[data-a]').forEach((el) => {

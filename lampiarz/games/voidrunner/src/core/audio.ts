@@ -32,7 +32,11 @@ export type Sfx =
   | 'lightning'
   | 'explosion'
   | 'terminal'
-  | 'thunder';
+  | 'thunder'
+  | 'guard'
+  | 'block'
+  | 'parry'
+  | 'guardBreak';
 
 export interface AudioSettings {
   master: number;
@@ -411,6 +415,23 @@ export class AudioEngine {
       case 'explosion':
         this.noise(0.6, 0.25, 'lowpass', 1800, 60);
         this.osc('sine', 90, 30, 0.6, 0.2);
+        break;
+      case 'guard':
+        this.osc('sine', 300, 520, 0.08, 0.04);
+        this.noise(0.06, 0.03, 'bandpass', 2400, 1600, 0, 3);
+        break;
+      case 'block':
+        this.osc('square', 520, 380, 0.09, 0.07);
+        this.noise(0.12, 0.12, 'bandpass', 3200, 1400, 0, 2.5);
+        break;
+      case 'parry':
+        // bright metallic ring
+        [1320, 1980, 2640].forEach((f, i) => this.osc('triangle', f, f * 0.98, 0.45, 0.07 - i * 0.015, i * 0.01));
+        this.noise(0.08, 0.18, 'highpass', 5000, 3000);
+        break;
+      case 'guardBreak':
+        this.osc('sawtooth', 400, 90, 0.3, 0.09);
+        this.noise(0.25, 0.14, 'lowpass', 2000, 200);
         break;
       case 'thunder': {
         // crack first, then a long rolling rumble (delayed like real distance)

@@ -70,7 +70,7 @@ export function updateBoss(g: Game, e: Enemy, dt: number) {
   else if (e.boss === 'straznik') straznik(g, e, dt);
   else serce(g, e, dt);
   const p = g.player;
-  if (e.hurtful > 0 && !p.dead && p.x < e.x + e.w - 4 && p.x + p.w > e.x + 4 && p.y < e.y + e.h - 2 && p.y + p.h > e.y + 4) g.damagePlayer(e.boss === 'matka' ? 22 : 20, e.x + e.w / 2);
+  if (e.hurtful > 0 && !p.dead && p.x < e.x + e.w - 4 && p.x + p.w > e.x + 4 && p.y < e.y + e.h - 2 && p.y + p.h > e.y + 4) g.damagePlayer(e.boss === 'matka' ? 22 : 20, e.x + e.w / 2, false, { kind: 'melee', enemy: e });
 }
 
 // ------------------------------------------------------------------ Matka Roju

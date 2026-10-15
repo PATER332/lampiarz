@@ -146,7 +146,7 @@ export function updateEnemy(g: Game, e: Enemy, dt: number) {
   // contact damage only during real attacks
   if (e.hurtful > 0 && !p.dead && overlap(e, { x: p.x + 1, y: p.y + 2, w: p.w - 2, h: p.h - 2 })) {
     const base = e.type === 'stalker' ? 18 : e.type === 'shield' ? 16 : e.type === 'drone' ? 12 : e.type === 'larva' ? 8 : 12;
-    g.damagePlayer(base * dmgScale(g, e), ex);
+    g.damagePlayer(base * dmgScale(g, e), ex, false, { kind: 'melee', enemy: e });
   }
 }
 
@@ -260,7 +260,7 @@ function hunter(g: Game, e: Enemy, dt: number, pc: V, ex: number, ey: number) {
       const p = g.player;
       if (e.stateT > 0.04 && e.stateT < 0.16 && !e.n && overlap(box, p)) {
         e.n = 1;
-        g.damagePlayer(14 * dmgScale(g, e), ex);
+        g.damagePlayer(14 * dmgScale(g, e), ex, false, { kind: 'melee', enemy: e });
       }
       if (e.stateT > 0.22) {
         e.n = 0;

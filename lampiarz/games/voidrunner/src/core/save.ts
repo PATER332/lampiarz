@@ -30,7 +30,7 @@ export interface Meta {
   stats: { runs: number; wins: number; deaths: number; kills: number; bosses: number; bestArea: number; bestTime: number };
   settings: Settings;
   keys: KeyMap;
-  /** 2 = defaults include R and mouse buttons */
+  /** 2 = defaults include R and mouse buttons; 3 = Q blocks, F heals */
   keysVersion?: number;
   tutorialDone: boolean;
 }
@@ -67,7 +67,7 @@ export function newMeta(): Meta {
     stats: { runs: 0, wins: 0, deaths: 0, kills: 0, bosses: 0, bestArea: 0, bestTime: 0 },
     settings: defaultSettings(),
     keys: JSON.parse(JSON.stringify(DEFAULT_KEYS)),
-    keysVersion: 2,
+    keysVersion: 3,
     tutorialDone: false,
   };
 }
@@ -115,6 +115,16 @@ export function loadMeta(): Meta {
         const v = (p.keys as KeyMap)[a];
         if (Array.isArray(v) && v.every((x) => typeof x === 'string')) keys[a] = v;
       }
+    if ((p.keysVersion ?? 1) < 3) {
+      // v3: Q became the block / parry key, healing moved to F
+      const used = new Set(Object.values(keys).flat());
+      if (keys.heal.includes('KeyQ') && !used.has('KeyF')) {
+        keys.heal = keys.heal.map((c) => (c === 'KeyQ' ? 'KeyF' : c));
+        used.delete('KeyQ');
+        used.add('KeyF');
+      }
+      if (!p.keys || !(p.keys as KeyMap).block) keys.block = used.has('KeyQ') ? [] : ['KeyQ'];
+    }
     if ((p.keysVersion ?? 1) < 2) {
       // older saves: add the new default bindings (R, left / right mouse button) if they are free
       const used = new Set(Object.values(keys).flat());
@@ -136,7 +146,7 @@ export function loadMeta(): Meta {
       stats: { ...base.stats, ...(p.stats ?? {}) },
       settings: { ...base.settings, ...(p.settings ?? {}) },
       keys,
-      keysVersion: 2,
+      keysVersion: 3,
       tutorialDone: !!p.tutorialDone,
     };
   } catch {

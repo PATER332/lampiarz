@@ -477,3 +477,123 @@ test('weather: coolant snow makes the floor slippery, fog shortens enemy sight',
   g.weather = 'fog';
   assert.equal(g.sees(e, 180), false, 'but not in the fog');
 });
+
+test('block (Q): stops blows from the front for energy; back hits and traps still hurt', () => {
+  const { g, input } = makeGame(40);
+  const { floor } = box(g);
+  const p = g.player;
+  p.facing = 1;
+  const e = makeEnemy(g, 'hunter', p.x + 20, floor - 20, false);
+  g.enemies.push(e);
+  input.press('block');
+  run(g, 0.4); // past the parry window
+  assert.equal(p.blocking, true);
+  assert.equal(p.anim, 'block');
+  const hp0 = p.hp;
+  const en0 = p.energy;
+  g.damagePlayer(20, e.x + e.w / 2, false, { kind: 'melee', enemy: e });
+  assert.equal(p.hp, hp0, 'front blow blocked');
+  assert.ok(p.energy < en0, 'block costs energy');
+  assert.equal(g.run.blocks, 1);
+  // from behind
+  p.iframes = 0;
+  g.damagePlayer(20, p.x - 40, false, { kind: 'melee', enemy: e });
+  assert.ok(p.hp < hp0, 'hit from behind goes through');
+  // traps / hazards are not blockable
+  p.iframes = 0;
+  const hp1 = p.hp;
+  g.damagePlayer(14, p.x + 30);
+  assert.ok(p.hp < hp1, 'saws, spikes and hazards ignore the guard');
+  input.release('block');
+  run(g, 0.2);
+  assert.equal(p.blocking, false, 'guard lowered when Q is released');
+});
+
+test('block: slower movement, no attacking; empty energy breaks the guard', () => {
+  const { g, input } = makeGame(41);
+  box(g);
+  const p = g.player;
+  input.press('right');
+  run(g, 0.5);
+  const free = Math.abs(p.vx);
+  input.press('block');
+  run(g, 0.5);
+  assert.ok(Math.abs(p.vx) < free * 0.5, 'moves slowly behind the shield');
+  input.press('attack');
+  g.step();
+  input.release('attack');
+  assert.equal(p.attack, null, 'cannot attack while guarding');
+  input.release('right');
+  run(g, 0.3);
+  p.facing = 1;
+  p.energy = 0;
+  p.iframes = 0;
+  const hp0 = p.hp;
+  g.damagePlayer(20, p.x + 40, false, { kind: 'melee' });
+  assert.ok(p.hp < hp0 && hp0 - p.hp < 20, 'half the damage goes through');
+  assert.equal(p.blocking, false, 'guard broken');
+  assert.ok(p.blockCd > 0);
+  g.step();
+  assert.equal(p.blocking, false, 'cannot raise it again right away');
+  input.release('block');
+});
+
+test('parry: pressing Q right before the hit stuns the attacker, refunds energy, opens a counter', () => {
+  const { g, input } = makeGame(42);
+  const { floor } = box(g);
+  const p = g.player;
+  p.facing = 1;
+  p.energy = 20;
+  const e = makeEnemy(g, 'hunter', p.x + 20, floor - 20, false);
+  e.hp = e.maxHp = 500;
+  g.enemies.push(e);
+  input.press('block');
+  g.step();
+  const hp0 = p.hp;
+  g.damagePlayer(20, e.x + e.w / 2, false, { kind: 'melee', enemy: e });
+  assert.equal(p.hp, hp0, 'no damage');
+  assert.equal(g.run.parries, 1);
+  assert.ok(e.stun > 1, 'attacker stunned');
+  assert.ok(p.energy >= 35 - 0.5, 'energy refunded (+15)');
+  assert.ok(p.counterT > 0, 'counter window');
+  assert.ok(g.slowmo > 0, 'slow motion');
+  input.release('block');
+});
+
+test('parry reflects enemy bullets back, stronger', () => {
+  const { g, input } = makeGame(43);
+  box(g);
+  const p = g.player;
+  p.facing = 1;
+  g.addProjectile({ x: p.x + p.w + 40, y: p.y + 10, vx: -200, vy: 0, r: 3, dmg: 10, owner: 'enemy', kind: 'orb', life: 2, pierce: false, gravity: 0 });
+  const pr = g.projectiles[g.projectiles.length - 1];
+  run(g, 0.12);
+  input.press('block');
+  const hp0 = p.hp;
+  run(g, 0.2);
+  input.release('block');
+  assert.equal(p.hp, hp0, 'not hurt');
+  assert.equal(pr.owner, 'player', 'bullet now belongs to the player');
+  assert.ok(pr.vx > 0, 'flies back');
+  assert.equal(pr.dmg, 15);
+});
+
+test('keys v3: Q becomes block and healing moves to F in older saves', async () => {
+  const mem = new Map<string, string>();
+  (globalThis as { localStorage?: unknown }).localStorage = {
+    getItem: (k: string) => mem.get(k) ?? null,
+    setItem: (k: string, v: string) => void mem.set(k, v),
+    removeItem: (k: string) => void mem.delete(k),
+  };
+  const { loadMeta, newMeta } = await import('../src/core/save');
+  const old = newMeta() as unknown as Record<string, unknown>;
+  old.keysVersion = 2;
+  const keys = old.keys as Record<string, string[]>;
+  delete keys.block;
+  keys.heal = ['KeyQ'];
+  mem.set('voidrunner.meta.v1', JSON.stringify(old));
+  const m = loadMeta();
+  assert.deepEqual(m.keys.heal, ['KeyF']);
+  assert.deepEqual(m.keys.block, ['KeyQ']);
+  (globalThis as { localStorage?: unknown }).localStorage = undefined;
+});

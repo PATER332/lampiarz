@@ -129,8 +129,9 @@ export const TEMPLATES: RoomTemplate[] = [
       b.m('T', 27, F, 'SHIFT — zryw. Daje chwilę nietykalności: przemknij przez pociski i ataki. Działa też w powietrzu.');
       b.haz(31, 34, 15);
       b.m('T', 40, F, 'J, R albo lewy przycisk myszy — atak. Przytrzymaj i puść: atak naładowany. K albo prawy przycisk myszy — umiejętność (zużywa energię).');
-      b.m('g', 47, F);
-      b.m('T', 52, F, 'Q — nanoapteczka (leczenie). E — interakcja z terminalami. I — ekwipunek. ESC — pauza.');
+      b.m('T', 44, F, 'Q — obrona: przytrzymaj, a tarcza zatrzyma ciosy i pociski z przodu. Naciśnij Q tuż przed ciosem: parowanie (ogłusza, odbija pociski).');
+      b.m('g', 48, F);
+      b.m('T', 53, F, 'F — nanoapteczka (leczenie). E — interakcja z terminalami. I — ekwipunek. ESC — pauza.');
       b.m('T', 55, F, 'Pęknięte ściany kryją przejścia. Uderz w nie. Uważaj na pułapki: piły, wysuwane kolce, ogień ze ścian i spadający gruz zawsze najpierw ostrzegają.');
       b.crack(58, 12, 58, 14);
       b.solid(58, 11, 62, 11);
@@ -186,7 +187,7 @@ export const TEMPLATES: RoomTemplate[] = [
       b.solid(38, 13, 39, 14);
       b.plat(18, 23, 10);
       b.plat(31, 35, 9);
-      b.m('t', 21, 1).m('g', 20, F).m('g', 34, F).m('a', 28, 5);
+      b.m('t', 21, 9).m('g', 20, F).m('g', 34, F).m('a', 28, 5); // turret on the walkway (a ceiling one could not be reached)
       b.m('O', 33, 8);
       b.m('$', 13, 10).m('$', 27, 11);
     },

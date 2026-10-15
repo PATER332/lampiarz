@@ -11,6 +11,7 @@ export type Action =
   | 'special'
   | 'interact'
   | 'heal'
+  | 'block'
   | 'inventory'
   | 'pause';
 
@@ -24,6 +25,7 @@ export const ACTIONS: { id: Action; label: string }[] = [
   { id: 'attack', label: 'Atak (przytrzymaj: atak naładowany)' },
   { id: 'special', label: 'Umiejętność specjalna' },
   { id: 'interact', label: 'Interakcja' },
+  { id: 'block', label: 'Obrona (blok; tuż przed ciosem: parowanie)' },
   { id: 'heal', label: 'Nanoapteczka (leczenie)' },
   { id: 'inventory', label: 'Ekwipunek' },
   { id: 'pause', label: 'Pauza' },
@@ -41,7 +43,8 @@ export const DEFAULT_KEYS: KeyMap = {
   attack: ['KeyJ', 'KeyR', 'Mouse0'],
   special: ['KeyK', 'Mouse2'],
   interact: ['KeyE'],
-  heal: ['KeyQ'],
+  block: ['KeyQ'],
+  heal: ['KeyF'],
   inventory: ['KeyI'],
   pause: ['Escape'],
 };

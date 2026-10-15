@@ -178,6 +178,7 @@ button { font: inherit; color: inherit; }
 .touch .tk { right: 166px; bottom: 30px; width: 52px; height: 52px; font-size: 11px; }
 .touch .te { right: 28px; bottom: 150px; width: 44px; height: 44px; font-size: 11px; }
 .touch .th { right: 170px; bottom: 96px; width: 44px; height: 44px; font-size: 11px; }
+.touch .tq { right: 226px; bottom: 74px; width: 48px; height: 48px; font-size: 11px; }
 .touch .tp { right: 12px; top: 74px; width: 40px; height: 40px; border-radius: 8px; font-size: 12px; }
 
 @media (max-width: 720px) {

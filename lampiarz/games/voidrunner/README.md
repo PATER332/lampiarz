@@ -14,7 +14,8 @@ ustawienia, `voidrunner.run.v1` — wyprawa w ostatnim punkcie zapisu).
 | J, R, lewy przycisk myszy | atak; przytrzymaj i puść — atak naładowany |
 | K, prawy przycisk myszy | umiejętność specjalna (zużywa energię) |
 | E | interakcja: ołtarze ulepszeń, skrzynie, terminale, stacje medyczne |
-| Q | nanoapteczka (leczenie) |
+| Q | obrona: przytrzymaj — tarcza z przodu (kosztuje energię); tuż przed ciosem — parowanie |
+| F | nanoapteczka (leczenie) |
 | I | ekwipunek |
 | S + Spacja | zeskok z kładki |
 | ↓ + atak (w powietrzu) | cięcie w dół — odbicie od wrogów, skrzyń i kolców („pogo”) |
@@ -51,6 +52,10 @@ Na ekranach dotykowych pojawiają się przyciski (można je też włączyć/wył
   oświetlona, z poświatą na podłodze.
 - **Czytelność**: jaśniejsze krawędzie i obrys wszystkiego, po czym można chodzić, przyciemnione tło,
   minimapa pomieszczenia z wrogami, przeszkodami i wyjściem, strzałka do otwartego wyjścia poza ekranem.
+- **Obrona (Q)**: tarcza zatrzymuje z przodu ciosy wrogów, pociski, wybuchy i promienie bossów kosztem energii
+  (bez energii garda pęka i połowa obrażeń przechodzi). Wciśnięcie Q tuż przed trafieniem (0,2 s) to
+  parowanie: bez kosztu, ogłusza atakującego, odbija pociski (×1,5 obrażeń), +15 energii, kontra ×1,6.
+  Pułapki, kolce, kwas, lasery bezpieczeństwa i fale pod nogami nie dają się zablokować.
 - **Elementy otoczenia**: skrzynie do rozbicia (Fragmenty, czasem zdrowie), wybuchowe beczki (ranią też gracza),
   wyrzutnie skokowe, zawory pary z ostrzeżeniem, kruszące się kładki, które po chwili się odbudowują.
 - **Wrogowie**: dron, łowca, wieżyczka, prześladowca, istota Pustki, tarczownik (blokuje ciosy z przodu) (+ odmiany elitarne). Każdy groźny atak
@@ -79,6 +84,12 @@ Na ekranach dotykowych pojawiają się przyciski (można je też włączyć/wył
 - `src/ui.ts` — menu, baza, HUD, pauza, ekwipunek, ustawienia, sterowanie, ekrany końca wyprawy, przyciski dotykowe.
 
 ## Testy
+
+`tests/levels.test.ts` sprawdza każde pomieszczenie prawdziwą fizyką gracza (`tests/levelsim.ts`): z każdego
+miejsca, w którym da się stanąć, symuluje chodzenie, skoki, podwójne skoki, zryw w powietrzu i zeskoki
+z kładek i sprawdza, że wyjście, wszystkie obiekty, Fragmenty i wieżyczki są osiągalne bez dotykania
+zagrożeń. Bot z prawdziwym sterowaniem pokonuje każdego z trzech bossów. Do tego setki wygenerowanych
+wypraw są sprawdzane pod kątem złego rozmieszczenia (spawn, wyjście, wrogowie w ścianach, przeszkody).
 
 ```bash
 npx tsx --test games/voidrunner/tests/*.test.ts                      # logika: ruch, walka, bossowie, zapis…
