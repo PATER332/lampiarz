@@ -13,7 +13,9 @@ export interface MainMenuProps {
   onNew: () => void;
   onDaily: () => void;
   onBook: () => void;
+  onMastery: () => void;
   onHowTo: () => void;
+  onTutorial: () => void;
   onSettings: () => void;
 }
 
@@ -80,8 +82,16 @@ export function MainMenu(p: MainMenuProps) {
             Noc dnia
             <small>{p.dailyScore !== null ? `twój wynik: ${p.dailyScore}` : 'to samo miasto dla wszystkich'}</small>
           </button>
+          <button className="menu-item" onClick={click(p.onMastery)} onMouseEnter={() => audio.play('hover')}>
+            Księga mistrza
+            <small>popiół: {p.profile.ash ?? 0} · trwałe ulepszenia</small>
+          </button>
           <button className="menu-item" onClick={click(p.onBook)} onMouseEnter={() => audio.play('hover')}>
             Księga lampiarza
+          </button>
+          <button className={`menu-item ${p.profile.tutorialDone ? '' : 'recommended'}`} onClick={click(p.onTutorial)} onMouseEnter={() => audio.play('hover')}>
+            Samouczek
+            <small>{p.profile.tutorialDone ? 'powtórz podstawy' : 'polecany na start · ok. 3 min'}</small>
           </button>
           <button className="menu-item" onClick={click(p.onHowTo)} onMouseEnter={() => audio.play('hover')}>
             Jak grać
@@ -109,7 +119,7 @@ export function MainMenu(p: MainMenuProps) {
             <span>Pierwsza noc czeka.</span>
           )}
         </div>
-        <span>v1.0</span>
+        <span>v2.3</span>
       </div>
     </div>
   );

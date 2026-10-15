@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { audio } from '../audio/audio';
-import { ACHIEVEMENTS, CLASSES, ENEMIES, RELICS } from '../game/content';
-import type { Profile, Settings } from '../game/meta';
+import { ACHIEVEMENTS, CLASSES, ENEMIES, MASTERY, RELICS, WEATHERS } from '../game/content';
+import { masteryLevel, masteryNextCost, type Profile, type Settings } from '../game/meta';
 import { seedToCode } from '../game/rng';
 import type { EnemyType } from '../game/types';
 import { CloseButton, EnemyPortrait, Modal, Switch } from './common';
@@ -73,6 +73,20 @@ export function SettingsModal({
       </div>
       <div className="setting">
         <div>
+          <div className="ttl">Efekty świetlne</div>
+          <div className="sub">Barwne światło, mokry bruk, poświata i ziarno. Na słabszych komputerach gra wyłącza je sama.</div>
+        </div>
+        <Switch on={settings.effects !== false} onChange={(v) => set('effects', v)} label="Efekty świetlne" />
+      </div>
+      <div className="setting">
+        <div>
+          <div className="ttl">Wskazówki</div>
+          <div className="sub">Ramka „Cel”, strzałki do zniczy i bramy, karty nowych wrogów.</div>
+        </div>
+        <Switch on={settings.hints} onChange={(v) => set('hints', v)} label="Wskazówki" />
+      </div>
+      <div className="setting">
+        <div>
           <div className="ttl">Siatka pól</div>
         </div>
         <Switch on={settings.showGrid} onChange={(v) => set('showGrid', v)} label="Siatka pól" />
@@ -122,7 +136,7 @@ export function SettingsModal({
 }
 
 // ------------------------------------------------------------------ how to play
-export function HowToModal({ onClose }: { onClose: () => void }) {
+export function HowToModal({ onClose, onTutorial }: { onClose: () => void; onTutorial?: () => void }) {
   return (
     <Modal onClose={onClose} wide labelledBy="howto-title">
       <div className="modal-head">
@@ -137,22 +151,34 @@ export function HowToModal({ onClose }: { onClose: () => void }) {
           Mrok zalał miasto. Ty masz latarnię, kanister oleju i jedno zadanie: przeprowadzić światło przez pięć dzielnic aż do latarni morskiej na
           cyplu.
         </p>
-        <h3>Cel</h3>
-        <ul>
+        {onTutorial ? (
+          <p className="howto-tut">
+            Najszybciej nauczysz się w praktyce:{' '}
+            <button className="btn small primary" onClick={onTutorial}>
+              Zagraj samouczek
+            </button>
+          </p>
+        ) : null}
+        <h3>Cel w każdej dzielnicy</h3>
+        <ol>
+          <li>Znajdź trzy <b>znicze</b> (duże misy ognia) — strzałki na brzegu ekranu i ramka „Cel” u góry wskazują drogę.</li>
           <li>
-            W każdej dzielnicy zapal <b>trzy znicze</b> (po 2 oleju) — wtedy otwiera się brama do kolejnej dzielnicy.
+            Zapal każdy, wchodząc w niego (2 oleju). Gdy <b>wszystkie trzy</b> zapłoną jednocześnie, brama otwiera się <b>na dobre</b> — nawet jeśli coś
+            potem zgasi znicz.
           </li>
-          <li>
-            Na Cyplu Latarni zapal znicze, a potem <b>latarnię morską</b> (3 oleju) — albo rozprosz Matkę Mroku.
-          </li>
-        </ul>
+          <li>Wejdź w bramę. Dostajesz +1 zdrowia i +1 oleju, potem warsztat i wybór kolejnej dzielnicy.</li>
+        </ol>
+        <p>
+          Gra jest <b>turowa</b>: każdy twój ruch to jedna tura, a wrogowie ruszają się dopiero po tobie. Nie ma pośpiechu — ikony nad wrogami mówią,
+          co zrobią w następnej turze.
+        </p>
         <h3>Światło to schronienie</h3>
         <ul>
           <li>
             Pola oświetlone przez <b>latarnie, znicze i ogień</b> to święte światło: cienie nie mogą w nie wejść, a jeśli światło je zaskoczy — płoną
-            (2 obrażeń) i uciekają.
+            (2 obrażeń). Uwaga: cień stojący tuż za granicą blasku nadal może cię drapnąć, więc stój głębiej w świetle.
           </li>
-          <li>Twoja ręczna latarnia tylko oświetla drogę. Cienie podejdą do ciebie, ale dzięki niej je widzisz. Bez oleju jej blask kurczy się do jednego pola.</li>
+          <li>Twoja ręczna latarnia tylko oświetla drogę — cienie podejdą do ciebie. Bez oleju jej blask kurczy się do jednego pola.</li>
           <li>Ściany rzucają cień — światło dociera tylko tam, gdzie „widzi” płomień.</li>
           <li>
             Odpoczywając (<b>czekaj</b>) w blasku płonącego znicza, co 4 tury odzyskujesz 1 zdrowia.
@@ -160,20 +186,58 @@ export function HowToModal({ onClose }: { onClose: () => void }) {
         </ul>
         <h3>Olej to waluta wyborów</h3>
         <ul>
-          <li>Zapalenie latarni kosztuje 1, znicza 2, zdolność postaci 1–2. Ręczna latarnia spala 1 olej co 15 tur.</li>
-          <li>Olej daje kanister na ulicy, czasem rozproszony cień, a zgaszona przez ciebie latarnia oddaje 1 (klawisz F).</li>
+          <li>Latarnia kosztuje 1, znicz 2, zdolność postaci 1–2. Ręczna latarnia spala 1 olej co 15 tur.</li>
+          <li>
+            Olej daje kanister na ulicy, rozproszony gasiciel (+1), czasem cień, a zgaszona przez ciebie latarnia oddaje 1 (stań obok i naciśnij{' '}
+            <b>F</b>).
+          </li>
           <li>Gdy masz najwyżej 1 olej, każdy rozproszony cień daje iskrę — +1 oleju.</li>
         </ul>
         <h3>Mrok gęstnieje</h3>
         <ul>
-          <li>Wskaźnik mroku rośnie z każdą turą; gdy się zapełni, w ciemności rodzi się nowy cień. Każde płonące światło spowalnia mrok.</li>
+          <li>Pasek mroku rośnie z każdą turą; gdy się zapełni, w ciemności rodzi się nowy cień. Każde płonące światło spowalnia mrok.</li>
           <li>Po 160 turach w jednej dzielnicy zapada głęboka noc: mrok rośnie dwa razy szybciej, a cienie przestają zostawiać żar.</li>
         </ul>
         <h3>Walka</h3>
         <ul>
-          <li>Wejdź na cień, aby go uderzyć. Wrogowie atakują, gdy stoją obok ciebie na początku swojej tury — kto pierwszy, ten lepszy.</li>
-          <li>Ikony nad wrogami pokazują ich zamiary na następną turę. Czerwona linia to szarża Łowcy — zejdź z niej.</li>
+          <li>Wejdź we wroga, aby go uderzyć. Wrogowie atakują, gdy stoją obok ciebie — kto pierwszy, ten lepszy.</li>
+          <li>Kreski pod wrogiem to jego życie. Fioletowe kreski = elita (o 1 punkt życia więcej).</li>
           <li>Żar z rozproszonych cieni i stosów wydasz w warsztacie po każdej dzielnicy na relikty, leczenie i olej.</li>
+        </ul>
+        <h3>Wrogowie</h3>
+        <div className="bestiary-mini">
+          {(Object.keys(ENEMIES) as (keyof typeof ENEMIES)[]).map((k) => (
+            <div key={k}>
+              <b>{ENEMIES[k].name}</b>
+              <span>{ENEMIES[k].desc}</span>
+            </div>
+          ))}
+        </div>
+        <h3>Co jeszcze spotkasz</h3>
+        <ul>
+          <li>
+            <b>Beczki z olejem</b>: wejdź w beczkę, a wybuchnie — 3 obrażeń wrogom wokół i ogień na 4 tury. Ciebie nie rani, więc zwab cienie i odpal.
+          </li>
+          <li>
+            <b>Pogoda</b>: {(['deszcz', 'mgla', 'pelnia'] as const).map((w) => `${WEATHERS[w].name} — ${WEATHERS[w].desc}`).join(' ')} Prognozę widać przy wyborze drogi.
+          </li>
+          <li>
+            <b>Kominiarz Cieni</b> (3. dzielnica): schodzi z dachów, gdy zapłonie drugi znicz, i gasi latarnie sadzą. Pokonany zostawia relikt.
+          </li>
+          <li>
+            <b>Tryb „Do świtu”</b>: dzielnice bez końca, mrok gęstnieje z każdą. Liczy się rekord.
+          </li>
+          <li>
+            <b>Księga mistrza</b> (menu): popiół z każdej nocy zamienisz na trwałe ulepszenia.
+          </li>
+        </ul>
+        <h3>Ostatnia noc: Cypel Latarni</h3>
+        <ul>
+          <li>Na Cyplu wiatr od morza leczy cię do pełna i daje +2 oleju.</li>
+          <li>
+            Matka Mroku śpi, dopóki nie zapalisz pierwszego znicza. Zapal trzy znicze, a potem <b>latarnię morską</b> (1 olej) — albo rozprosz Matkę.
+          </li>
+          <li>Napis „ZAĆMIENIE!” ostrzega turę wcześniej: odejdź z jej kręgu. Zaćmienie gasi zwykłe latarnie, znicze wytrzymują.</li>
         </ul>
         <h3>Sterowanie</h3>
         <div className="keys">
@@ -219,6 +283,66 @@ export function HowToModal({ onClose }: { onClose: () => void }) {
 
 // ------------------------------------------------------------------ book
 type Tab = 'ach' | 'stats' | 'beasts' | 'relics' | 'history';
+
+// ------------------------------------------------------------------ mastery (permanent upgrades)
+export function MasteryModal({ profile, onBuy, onClose }: { profile: Profile; onBuy: (id: string) => string | null; onClose: () => void }) {
+  const [msg, setMsg] = useState<string | null>(null);
+  return (
+    <Modal onClose={onClose} wide labelledBy="mastery-title">
+      <div className="modal-head">
+        <div>
+          <p className="eyebrow">Księga mistrza</p>
+          <h2 id="mastery-title">Ulepszenia na każdą noc</h2>
+        </div>
+        <CloseButton onClick={onClose} />
+      </div>
+      <p className="lore" style={{ marginTop: 0 }}>
+        Po każdej nocy — wygranej czy przegranej — z latarni zostaje <b>popiół</b>. Mistrz cechu zamienia go na trwałe ulepszenia, które działają w każdej
+        kolejnej nocy (oprócz Nocy dnia, żeby była równa dla wszystkich).
+      </p>
+      <div className="ash-balance">
+        Popiół: <b>{profile.ash ?? 0}</b>
+      </div>
+      <div className="mastery-grid">
+        {MASTERY.map((m) => {
+          const lv = masteryLevel(profile, m.id);
+          const cost = masteryNextCost(profile, m.id);
+          return (
+            <div key={m.id} className={`mastery ${lv > 0 ? 'owned' : ''}`}>
+              <div className="nm">
+                {m.name}
+                <span className="lv">
+                  {Array.from({ length: m.costs.length }, (_, i) => (
+                    <i key={i} className={i < lv ? 'on' : ''} />
+                  ))}
+                </span>
+              </div>
+              <div className="ds">{m.desc}</div>
+              <button
+                className="btn small"
+                disabled={cost === null || (profile.ash ?? 0) < cost}
+                onClick={() => {
+                  const r = onBuy(m.id);
+                  setMsg(r ?? `Ulepszono: ${m.name}.`);
+                }}
+              >
+                {cost === null ? 'Maksymalny poziom' : `Kup za ${cost} popiołu`}
+              </button>
+            </div>
+          );
+        })}
+      </div>
+      <div className="modal-actions" style={{ alignItems: 'center' }}>
+        <span className="muted" style={{ marginRight: 'auto', fontSize: 14 }} aria-live="polite">
+          {msg ?? ' '}
+        </span>
+        <button className="btn primary" onClick={onClose}>
+          Zamknij
+        </button>
+      </div>
+    </Modal>
+  );
+}
 
 export function BookModal({ profile, onClose }: { profile: Profile; onClose: () => void }) {
   const [tab, setTab] = useState<Tab>('ach');

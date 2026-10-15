@@ -40,7 +40,8 @@ export function lampRadius(run: Run, lamp: Lamp): number {
 export function lanternRadius(run: Run): number {
   const p = run.player;
   if (p.oil <= 0) return BALANCE.lantern.dryRadius;
-  return CLASSES[run.cls].lantern + (p.relics.includes('szeroki_knot') ? 1 : 0);
+  const fog = run.district?.weather === 'mgla' ? BALANCE.weather.fogLantern : 0;
+  return Math.max(BALANCE.lantern.dryRadius, CLASSES[run.cls].lantern + (p.relics.includes('szeroki_knot') ? 1 : 0) - fog);
 }
 
 export function lightSources(run: Run): LightSource[] {

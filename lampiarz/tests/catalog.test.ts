@@ -27,22 +27,38 @@ test('search, categories and featured game', () => {
   assert.equal(searchGames({ q: 'nie-ma-takiej-gry' }).length, 0);
   assert.equal(searchGames({ category: 'puzzle' }).length, 0);
   const counts = categoryCounts();
-  assert.equal(counts.roguelite, 2);
+  assert.equal(counts.roguelite, 1);
+  assert.equal(counts.horror, 1);
+  assert.equal(searchGames({ q: 'babcia' })[0]?.slug, 'babcia');
+  assert.equal(searchGames({ q: 'dom bez wyjscia' })[0]?.slug, 'babcia');
   assert.equal(counts.akcja, 1);
-  assert.equal(searchGames({ q: 'popielny dzwon' }).length, 1);
-  assert.equal(searchGames({ q: 'parowanie' })[0]?.slug, 'popielny-dzwon');
-  assert.equal(searchGames({ category: 'akcja' })[0]?.slug, 'popielny-dzwon');
+  assert.equal(counts.imprezowe, 1);
+  assert.equal(counts.symulacje, 1);
+  assert.equal(searchGames({ q: 'skrzynkomat' })[0]?.slug, 'skrzynkomat');
+  assert.equal(searchGames({ q: 'upgrader' })[0]?.slug, 'skrzynkomat');
+  assert.equal(searchGames({ category: 'symulacje' })[0]?.slug, 'skrzynkomat');
+  assert.equal(searchGames({ q: 'random chaos' })[0]?.slug, 'random-chaos');
+  assert.equal(searchGames({ q: '2 graczy' })[0]?.slug, 'random-chaos');
+  assert.equal(searchGames({ category: 'imprezowe' })[0]?.slug, 'random-chaos');
+  assert.equal(counts.puzzle, 0);
+  assert.equal(searchGames({ category: 'horror' })[0]?.slug, 'babcia');
+  assert.ok(searchGames({ category: 'horror' }).some((g) => g.slug === 'babcia'));
   assert.equal(Object.values(counts).reduce((a, b) => a + b, 0) >= publishedGames().length, true);
   assert.equal(norm('Łódź Świętość'), 'lodz swietosc');
   assert.equal(findGame('nope'), undefined);
+  // removed titles are gone from the site
+  for (const slug of ['popielny-dzwon', 'night-shift', 'backrooms-the-descent']) assert.equal(findGame(slug), undefined);
+  assert.deepEqual(publishedGames().map((g) => g.slug).sort(), ['babcia', 'lampiarz', 'random-chaos', 'skrzynkomat']);
 });
 
 test('routes parse', () => {
   assert.deepEqual(parse('/'), { name: 'home' });
   assert.deepEqual(parse('/games/'), { name: 'library' });
   assert.deepEqual(parse('/games/lampiarz'), { name: 'game', slug: 'lampiarz' });
-  assert.deepEqual(parse('/play/popielny-dzwon'), { name: 'play', slug: 'popielny-dzwon' });
   assert.deepEqual(parse('/play/lampiarz'), { name: 'play', slug: 'lampiarz' });
+  assert.deepEqual(parse('/play/random-chaos'), { name: 'play', slug: 'random-chaos' });
+  assert.deepEqual(parse('/play/skrzynkomat'), { name: 'play', slug: 'skrzynkomat' });
+  assert.deepEqual(parse('/play/babcia'), { name: 'play', slug: 'babcia' });
   assert.deepEqual(parse('/x/y'), { name: 'notfound' });
 });
 

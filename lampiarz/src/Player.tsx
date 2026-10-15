@@ -48,6 +48,40 @@ export function Player({ slug }: { slug: string }) {
 
   const loadedAt = useRef(0);
 
+  // Keyboard reaches the game even when focus slipped out of the frame (a click on
+  // the top bar, Alt+Tab back to the page…): keys pressed on the page itself are
+  // handed to the game and the frame gets the focus back. Keys typed into the
+  // bar's own buttons/links keep working normally.
+  useEffect(() => {
+    if (state !== 'ready') return;
+    const forward = (e: KeyboardEvent) => {
+      const win = frameRef.current?.contentWindow;
+      if (!win || e.ctrlKey || e.metaKey || e.altKey) return;
+      const t = e.target as HTMLElement | null;
+      const interactive = !!t && t !== document.body && t !== document.documentElement && !!t.closest('a, button, input, select, textarea, [contenteditable]');
+      if (interactive && (e.code === 'Enter' || e.code === 'Space' || e.code === 'Tab')) return;
+      if (e.code === 'Tab') return;
+      try {
+        const Ev = (win as unknown as { KeyboardEvent: typeof KeyboardEvent }).KeyboardEvent;
+        const copy = new Ev(e.type, { key: e.key, code: e.code, repeat: e.repeat, shiftKey: e.shiftKey, bubbles: true, cancelable: true });
+        (win.document.activeElement ?? win.document.body ?? win).dispatchEvent(copy);
+        if (copy.defaultPrevented || e.code.startsWith('Arrow') || e.code === 'Space') e.preventDefault();
+      } catch {
+        /* cross-origin or closed frame: nothing to forward to */
+      }
+      if (e.type === 'keydown') {
+        if (interactive) (t as HTMLElement).blur();
+        win.focus();
+      }
+    };
+    window.addEventListener('keydown', forward);
+    window.addEventListener('keyup', forward);
+    return () => {
+      window.removeEventListener('keydown', forward);
+      window.removeEventListener('keyup', forward);
+    };
+  }, [state, attempt]);
+
   // load watchdog: the game counts as started once its root element has rendered
   useEffect(() => {
     setState('loading');

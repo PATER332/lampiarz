@@ -1070,19 +1070,21 @@ button {
   }
   .relics {
     position: fixed;
-    top: 104px;
-    left: 10px;
-    right: auto;
+    top: 38%;
+    right: 8px;
+    left: auto;
     bottom: auto;
+    flex-direction: column;
+    flex-wrap: nowrap;
     justify-content: flex-start;
-    max-width: 60%;
+    max-width: 40px;
     margin: 0;
   }
   .relic .tip {
-    top: calc(100% + 8px);
+    top: 0;
     bottom: auto;
-    left: 0;
-    right: auto;
+    left: auto;
+    right: calc(100% + 8px);
   }
   .relic {
     width: 30px;
@@ -1745,4 +1747,345 @@ button {
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
   }
+}
+
+/* ---------------------------------------------------------------- objective tracker */
+.objective {
+  position: absolute;
+  top: var(--obj-top, 96px);
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(520px, calc(100% - 24px));
+  padding: 8px 14px 9px;
+  text-align: center;
+  background: rgba(10, 12, 20, 0.72);
+  border: 1px solid var(--line-soft);
+  border-radius: 10px;
+  pointer-events: none;
+  backdrop-filter: blur(3px);
+  z-index: 5;
+}
+.objective .obj-title {
+  font-weight: 600;
+  font-size: 15px;
+  color: var(--holy);
+}
+.objective.t-warn {
+  border-color: rgba(255, 120, 90, 0.55);
+  animation: objPulse 1.4s ease-in-out infinite;
+}
+.objective.t-warn .obj-title {
+  color: #ff9a84;
+}
+.objective.t-good .obj-title {
+  color: #a6e39c;
+}
+.objective .obj-label {
+  font-size: 11px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-right: 6px;
+}
+.objective .obj-hint {
+  font-size: 13px;
+  color: var(--text);
+  opacity: 0.85;
+  margin-top: 2px;
+  line-height: 1.4;
+}
+@keyframes objPulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 rgba(255, 120, 90, 0);
+  }
+  50% {
+    box-shadow: 0 0 18px rgba(255, 120, 90, 0.35);
+  }
+}
+
+/* ---------------------------------------------------------------- interactive tutorial */
+.tut-card {
+  position: absolute;
+  top: var(--obj-top, 96px);
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(560px, calc(100% - 24px));
+  padding: 12px 16px 12px;
+  background: rgba(12, 14, 24, 0.9);
+  border: 1px solid rgba(255, 210, 122, 0.45);
+  border-radius: 12px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45), 0 0 24px rgba(255, 190, 90, 0.12);
+  z-index: 6;
+  animation: rise 0.35s var(--ease);
+}
+.tut-card .tut-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.tut-card .tut-step {
+  font-size: 11px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.tut-card h3 {
+  margin: 2px 0 4px;
+  font-size: 18px;
+  color: var(--holy);
+}
+.tut-card p {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--text);
+}
+.tut-card .tut-keys {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+.tut-card .tut-keys span {
+  font-size: 12px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--panel-2);
+  color: var(--parchment);
+}
+.tut-card .tut-progress {
+  display: flex;
+  gap: 3px;
+  margin-top: 10px;
+}
+.tut-card .tut-progress i {
+  flex: 1;
+  height: 4px;
+  border-radius: 2px;
+  background: #2b3347;
+}
+.tut-card .tut-progress i.done {
+  background: var(--holy);
+}
+.tut-card .tut-progress i.now {
+  background: linear-gradient(90deg, var(--holy), #2b3347);
+}
+.tut-skip {
+  pointer-events: auto;
+}
+
+/* ---------------------------------------------------------------- first-encounter hint */
+.enemy-hint {
+  position: absolute;
+  left: 14px;
+  top: 150px;
+  width: min(320px, calc(100% - 28px));
+  padding: 12px 14px;
+  font-size: 13.5px;
+  line-height: 1.5;
+  z-index: 7;
+  animation: rise 0.3s var(--ease);
+}
+.enemy-hint .sub {
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--violet);
+}
+.enemy-hint b {
+  display: block;
+  color: var(--parchment);
+  font-size: 16px;
+  margin: 2px 0 4px;
+}
+.enemy-hint button {
+  margin-top: 8px;
+}
+.death-tip {
+  margin: 12px auto 0;
+  max-width: 460px;
+  padding: 10px 12px;
+  border: 1px solid var(--line-soft);
+  border-radius: 8px;
+  background: rgba(255, 210, 122, 0.06);
+  font-size: 14px;
+  line-height: 1.5;
+  text-align: left;
+}
+.death-tip b {
+  color: var(--holy);
+}
+@media (max-width: 760px) {
+  .objective,
+  .tut-card {
+    padding: 6px 10px 7px;
+  }
+  .objective .obj-title {
+    font-size: 14px;
+  }
+  .objective .obj-hint {
+    font-size: 12px;
+  }
+  .tut-card p {
+    font-size: 13px;
+  }
+  .enemy-hint {
+    top: auto;
+    bottom: 170px;
+  }
+}
+.tut-recap {
+  padding-left: 20px;
+  margin: 10px 0 0;
+}
+.tut-recap li {
+  margin: 7px 0;
+  line-height: 1.5;
+  font-size: 14.5px;
+}
+.tut-recap b {
+  color: var(--holy);
+}
+.menu-item.recommended {
+  color: var(--holy);
+}
+.menu-item.recommended small {
+  color: var(--brass-hi);
+}
+.howto-tut {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.bestiary-mini {
+  display: grid;
+  gap: 8px;
+}
+.bestiary-mini > div {
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel-2);
+  font-size: 14px;
+  line-height: 1.45;
+}
+.bestiary-mini b {
+  display: block;
+  color: var(--parchment);
+}
+@media (min-width: 1000px) {
+  .tut-card {
+    left: 14px;
+    top: 100px;
+    transform: none;
+    width: 380px;
+  }
+}
+.night-btn.mode-btn {
+  width: auto;
+  border-radius: 999px;
+  padding: 0 18px;
+}
+
+.weather-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 4px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+  pointer-events: auto;
+}
+.weather-chip.deszcz {
+  color: #9cc3e8;
+}
+.weather-chip.mgla {
+  color: #c4cbd6;
+}
+.weather-chip.pelnia {
+  color: #f3dc9a;
+}
+.follow-chip {
+  margin-top: 4px;
+  font-size: 12px;
+  color: #9fe39a;
+}
+.ash-earned {
+  margin: 10px auto 0;
+  text-align: center;
+  font-size: 14px;
+  color: #d8c7a8;
+}
+.ash-balance {
+  font-size: 16px;
+  margin: 4px 0 12px;
+  color: #d8c7a8;
+}
+.ash-balance b {
+  color: var(--holy);
+  font-size: 20px;
+}
+.mastery-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+  gap: 10px;
+}
+.mastery {
+  display: grid;
+  gap: 6px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel-2);
+}
+.mastery.owned {
+  border-color: var(--brass-dim);
+}
+.mastery .nm {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-weight: 600;
+  color: var(--parchment);
+}
+.mastery .lv {
+  display: flex;
+  gap: 3px;
+}
+.mastery .lv i {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  border: 1px solid var(--brass-dim);
+}
+.mastery .lv i.on {
+  background: var(--holy);
+  border-color: var(--holy);
+}
+.mastery .ds {
+  font-size: 13.5px;
+  color: var(--text);
+  line-height: 1.45;
+}
+.weather-inline {
+  pointer-events: auto;
+  cursor: help;
+}
+.weather-inline.deszcz {
+  color: #9cc3e8;
+}
+.weather-inline.mgla {
+  color: #c4cbd6;
+}
+.weather-inline.pelnia {
+  color: #f3dc9a;
 }

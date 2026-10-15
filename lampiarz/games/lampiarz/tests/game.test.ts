@@ -184,7 +184,7 @@ test('final district can be won both ways (lighthouse or boss)', async () => {
     run.player.maxHp = run.player.hp = 40;
     run.player.maxOil = run.player.oil = 40;
     playRun(run, s);
-    if (run.phase === 'victory') {
+    if ((run.phase as string) === 'victory') {
       if (run.bossSlain) byBoss++;
       else byLight++;
     }
@@ -205,10 +205,10 @@ test('final district can be won both ways (lighthouse or boss)', async () => {
   const spot = [[0, 1], [1, 0], [0, -1], [-1, 0]].find(([dx, dy]) => d.tiles[(lh.y + dy) * d.w + lh.x + dx] === 0 && !d.lamps.some((l) => l.x === lh.x + dx && l.y === lh.y + dy))!;
   run.player.x = lh.x + spot[0];
   run.player.y = lh.y + spot[1];
-  run.player.oil = 2;
+  run.player.oil = 0;
   playerAct(run, { type: 'move', dx: -spot[0], dy: -spot[1] });
-  assert.equal(run.phase, 'play', 'needs 3 oil');
-  run.player.oil = 3;
+  assert.equal(run.phase, 'play', 'needs a drop of oil');
+  run.player.oil = 1;
   const fx = playerAct(run, { type: 'move', dx: -spot[0], dy: -spot[1] });
   assert.equal(run.phase, 'victory');
   assert.equal(run.bossSlain, false);

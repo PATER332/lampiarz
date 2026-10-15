@@ -1,4 +1,4 @@
-import type { ClassId, DistrictMods, EnemyType, ThemeId } from './types';
+import type { ClassId, DistrictMods, EnemyType, ThemeId, WeatherId } from './types';
 
 // ---------------------------------------------------------------- classes
 export interface ClassDef {
@@ -82,10 +82,11 @@ export interface EnemyDef {
 export const ENEMIES: Record<EnemyType, EnemyDef> = {
   cien: { type: 'cien', name: 'Cień', hp: 1, damage: 1, speed: 1, embers: 1, holyImmune: false, minDepth: 1, weight: 10, desc: 'Zwykły strzęp mroku. Podchodzi i drapie. Nie wejdzie w światło latarni.' },
   smigacz: { type: 'smigacz', name: 'Śmigacz', hp: 1, damage: 1, speed: 2, embers: 1, holyImmune: false, minDepth: 2, weight: 6, desc: 'Porusza się o dwa pola na turę, ale żeby uderzyć, musi się zatrzymać. Uderz pierwszy.' },
-  gasiciel: { type: 'gasiciel', name: 'Gasiciel', hp: 2, damage: 0, speed: 1, embers: 2, holyImmune: true, minDepth: 2, weight: 4, desc: 'Odporny na światło i nie rani. Idzie do najbliższej płonącej latarni lub znicza i gasi ją — zgaszony znicz zamyka bramę. Gdy nic nie płonie, zdmuchuje olej z twojej latarni.' },
+  gasiciel: { type: 'gasiciel', name: 'Gasiciel', hp: 1, damage: 0, speed: 1, embers: 2, holyImmune: true, minDepth: 2, weight: 4, desc: 'Nie rani i wchodzi w światło. Podchodzi do płonącej latarni i gasi ją — trwa to 2 tury (znicz: 3), a licznik nad nim pokazuje, ile zostało. Jeden cios go rozprasza i oddaje 1 olej. Zniczy przy otwartej bramie już nie rusza.' },
   smolnik: { type: 'smolnik', name: 'Smolnik', hp: 2, damage: 0, speed: 1, embers: 2, holyImmune: false, minDepth: 3, weight: 4, desc: 'Lepka smoła. Zamiast ranić, wysysa 2 oleju z twojej latarni. Gdy olej się skończy — parzy.' },
-  lowca: { type: 'lowca', name: 'Łowca', hp: 2, damage: 2, speed: 1, embers: 3, holyImmune: false, minDepth: 3, weight: 3, desc: 'Gdy staniesz z nim w linii (do 4 pól), celuje, a w następnej turze szarżuje. Zejdź z czerwonej linii.' },
-  matka: { type: 'matka', name: 'Matka Mroku', hp: 12, damage: 2, speed: 1, embers: 20, holyImmune: true, minDepth: 6, weight: 0, desc: 'Źródło nocy. Co kilka tur gasi wszystkie światła wokół siebie i rodzi nowe cienie. Można ją zabić — albo zapalić latarnię morską mimo niej.' },
+  lowca: { type: 'lowca', name: 'Łowca', hp: 2, damage: 1, speed: 1, embers: 3, holyImmune: false, minDepth: 3, weight: 3, desc: 'Gdy staniesz z nim w linii (do 4 pól), celuje, a w następnej turze szarżuje (1 obrażeń, elita: 2). Zejdź z czerwonej linii.' },
+  matka: { type: 'matka', name: 'Matka Mroku', hp: 12, damage: 1, speed: 1, embers: 20, holyImmune: true, minDepth: 6, weight: 0, desc: 'Źródło nocy. Śpi przy latarni morskiej, dopóki nie zapalisz pierwszego znicza (albo nie podejdziesz za blisko). Ciężka — rusza się co drugą turę. Co 5 tur zaćmienie gasi zwykłe latarnie (znicze wytrzymują) i rani w promieniu 2 pól (napis „ZAĆMIENIE!” ostrzega turę wcześniej), co 8 tur rodzi cień. Można ją zabić — albo zapalić latarnię morską mimo niej.' },
+  kominiarz: { type: 'kominiarz', name: 'Kominiarz Cieni', hp: 4, damage: 1, speed: 1, embers: 14, holyImmune: false, minDepth: 3, weight: 0, desc: 'Mini-boss dachów. Schodzi do dzielnicy, gdy zapłonie drugi znicz. Co 5 tur ciska sadzą w najbliższą płonącą latarnię uliczną (napis „sadza” nad nim liczy tury) i ją gasi — znicze są dla sadzy za gorące. Nie wejdzie w święte światło. Ciężką szczotką uderza co drugą turę — po ciosie masz chwilę na odpowiedź. Po pokonaniu zostawia relikt.' },
 };
 
 // ---------------------------------------------------------------- relics
@@ -112,7 +113,7 @@ export const RELICS: RelicDef[] = [
   { id: 'dlugi_lont', name: 'Długi lont', desc: 'Zdolność kosztuje 1 olej mniej (min. 1) i ma +1 zasięgu.', rarity: 'uncommon', unlock: null },
   { id: 'pijawka', name: 'Pijawka', desc: 'Co drugie zabójstwo daje 1 olej.', rarity: 'uncommon', unlock: null },
   { id: 'czujne_oko', name: 'Czujne oko', desc: 'Widzisz wrogów i ich zamiary w promieniu 6 pól, nawet w mroku.', rarity: 'uncommon', unlock: null },
-  { id: 'wiatrochron', name: 'Wiatrochron', desc: 'Gasiciele potrzebują 2 tur, by zgasić płomień.', rarity: 'uncommon', unlock: null },
+  { id: 'wiatrochron', name: 'Wiatrochron', desc: 'Gasiciele potrzebują 1 tury więcej, by zgasić płomień.', rarity: 'uncommon', unlock: null },
   { id: 'mapa', name: 'Mapa kartografa', desc: 'Na początku dzielnicy znasz położenie zniczy, bramy, oleju i żaru.', rarity: 'uncommon', unlock: null },
   { id: 'plaszcz_mgly', name: 'Płaszcz z mgły', desc: 'Pierwsze obrażenia w każdej dzielnicy są ignorowane.', rarity: 'rare', unlock: 'bez_skazy' },
   { id: 'serce_latarni', name: 'Serce latarni', desc: 'Gdy olej spadnie do 0, raz na dzielnicę odzyskujesz 4 oleju.', rarity: 'rare', unlock: null },
@@ -180,7 +181,7 @@ export const THEMES: Record<ThemeId, ThemeDef> = {
   fabryka: {
     id: 'fabryka',
     name: 'Gazownia',
-    blurb: 'Gazowe latarnie świecą o pole dalej. Gasiciele ciągną tu chmarą.',
+    blurb: 'Gazowe latarnie świecą o pole dalej. Gasiciele krążą tu parami.',
     mods: { ...baseMods, lampRadiusBonus: 1, weights: { gasiciel: 9 } },
     danger: 2,
     palette: { floor: '#352f2b', floorAlt: '#3d3530', joint: '#1e1a17', wallTop: '#4d3426', wallFace: '#5e4232', wallTrim: '#24170f', accent: '#e07a3f', fog: '#1a1414' },
@@ -197,7 +198,7 @@ export const THEMES: Record<ThemeId, ThemeDef> = {
     id: 'latarnia',
     name: 'Cypel Latarni',
     blurb: 'Ostatnia noc. Zapal znicze, potem latarnię morską — albo zabij Matkę Mroku.',
-    mods: { ...baseMods, mrokMult: 1.1 },
+    mods: { ...baseMods, mrokMult: 0.55 }, // Matka breeds her own shadows here
     danger: 4,
     palette: { floor: '#34322f', floorAlt: '#3b3935', joint: '#1c1b19', wallTop: '#30384a', wallFace: '#414a5c', wallTrim: '#161b26', accent: '#f0c46c', fog: '#0d1222' },
   },
@@ -318,6 +319,38 @@ export const ACHIEVEMENTS: AchievementDef[] = [
   { id: 'na_oparach', name: 'Na oparach', desc: 'Przejdź przez bramę z pustą latarnią.', secret: true },
   { id: 'kapliczka', name: 'Zapomniana kapliczka', desc: 'Odnajdź ukrytą kapliczkę w mroku.', secret: true },
   { id: 'feniks', name: 'Z popiołów', desc: 'Przeżyj dzięki Popiołowi feniksa.', secret: true },
+  { id: 'kominiarz', name: 'Czyste kominy', desc: 'Pokonaj Kominiarza Cieni.', secret: false },
+  { id: 'pirotechnik', name: 'Pirotechnik', desc: 'Jedną beczką z olejem rozprosz 3 cienie naraz.', secret: true },
+  { id: 'do_switu', name: 'Do świtu', desc: 'W trybie „Do świtu” przejdź 8 dzielnic.', secret: false },
+  { id: 'mistrz', name: 'Mistrz cechu', desc: 'Kup 5 ulepszeń w Księdze mistrza.', secret: false },
 ];
+
+// ---------------------------------------------------------------- weather (per district)
+export interface WeatherDef {
+  id: WeatherId;
+  name: string;
+  desc: string;
+}
+export const WEATHERS: Record<WeatherId, WeatherDef> = {
+  jasna: { id: 'jasna', name: 'Pogodna noc', desc: 'Nic szczególnego. Gwiazdy patrzą.' },
+  deszcz: { id: 'deszcz', name: 'Deszcz', desc: 'Co 14 tur deszcz gasi jedną zwykłą latarnię (znicze są zadaszone). Kanistry dają +1 oleju.' },
+  mgla: { id: 'mgla', name: 'Mgła', desc: 'Twoja latarnia świeci o 0,8 pola słabiej, ale mrok gęstnieje o 20% wolniej.' },
+  pelnia: { id: 'pelnia', name: 'Pełnia', desc: 'Cienie zostawiają 50% więcej żaru, ale mrok gęstnieje o 20% szybciej.' },
+};
+
+// ---------------------------------------------------------------- mastery (permanent upgrades, "Księga mistrza")
+export interface MasteryDef {
+  id: string;
+  name: string;
+  desc: string;
+  costs: number[]; // per level
+}
+export const MASTERY: MasteryDef[] = [
+  { id: 'zapas', name: 'Zapasowa bańka', desc: '+1 oleju (i pojemności) na start nocy — za każdy poziom.', costs: [12, 28, 50] },
+  { id: 'kieszen', name: 'Kieszeń na żar', desc: '+4 żaru na start nocy — za każdy poziom.', costs: [10, 24, 44] },
+  { id: 'knot', name: 'Grubszy knot', desc: 'Latarnia przy pasie spala olej o 3 tury wolniej — za każdy poziom.', costs: [22, 48] },
+  { id: 'hart', name: 'Hart ducha', desc: '+1 maks. zdrowia.', costs: [70] },
+];
+export const MASTERY_MAP: Record<string, MasteryDef> = Object.fromEntries(MASTERY.map((m) => [m.id, m]));
 
 export const ACH_MAP: Record<string, AchievementDef> = Object.fromEntries(ACHIEVEMENTS.map((a) => [a.id, a]));

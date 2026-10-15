@@ -330,6 +330,11 @@ export function GameCard({ game, priority }: { game: Game; priority?: boolean })
       <div className="info">
         <div className="top">
           <span className="label">{categoryName(game.category)}</span>
+          {game.adult ? (
+            <span className="label age" title="Tylko dla dorosłych">
+              18+
+            </span>
+          ) : null}
           {game.mode ? <span className="label muted">{game.mode.split('·')[1]?.trim() ?? game.mode}</span> : null}
         </div>
         <h3>

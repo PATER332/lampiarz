@@ -66,11 +66,50 @@ const free = (r: Run, x: number, y: number) =>
     if (free(r, r.player.x + dd.x, r.player.y + dd.y)) { boss.x = r.player.x + dd.x; boss.y = r.player.y + dd.y; break; }
   }
   boss.pulse = 1;
+  boss.dormant = false;
   for (let i = 0; i < d.explored.length; i++) d.explored[i] = 1;
   out.boss = r;
   const v = JSON.parse(JSON.stringify(r)) as Run;
   (v as any).__victoryMove = { dx: -spot.x, dy: -spot.y };
   out.victory = v;
+}
+// C2: arriving on the Cape — Matka asleep, objective arrows
+{
+  const r = newRun({ cls: 'lampiarz', night: 1, seed: 1234, daily: null });
+  r.depth = 5; r.phase = 'path'; r.pathOptions = [{ theme: 'latarnia', name: 'Cypel', danger: 4 }];
+  choosePath(r, 'latarnia');
+  out.cape = r;
+}
+// V2: district 3 with Kominiarz, a barrel and rain
+{
+  const r = newRun({ cls: 'lampiarz', night: 1, seed: 2468, daily: null, mastery: { kieszen: 1 } });
+  r.depth = 2; r.phase = 'path'; r.pathOptions = [{ theme: 'port', name: 'Port', danger: 2 }];
+  choosePath(r, 'port');
+  const d = r.district; const p = r.player;
+  d.weather = 'deszcz';
+  d.enemies = [];
+  const dirs = DIRS4.filter((dd) => free(r, p.x + dd.x, p.y + dd.y));
+  void dirs;
+  const spots: { x: number; y: number }[] = [];
+  for (let dy = -4; dy <= 4; dy++) for (let dx = -4; dx <= 4; dx++) {
+    const x = p.x + dx, y = p.y + dy;
+    if (x < 1 || y < 1 || x >= d.w - 1 || y >= d.h - 1) continue;
+    if (Math.abs(dx) + Math.abs(dy) >= 3 && free(r, x, y)) spots.push({ x, y });
+  }
+  d.barrels = [{ id: 991, ...spots[0] }];
+  const k = makeEnemy(992, 'kominiarz', spots[Math.min(5, spots.length - 1)], new Rng(1), 3);
+  k.elite = false; k.hp = k.maxHp = 4; k.soot = 2;
+  d.enemies.push(k);
+  for (const l of d.lamps) if (l.kind === 'lamp' && Math.abs(l.x - p.x) + Math.abs(l.y - p.y) < 7) l.lit = true;
+  for (let i = 0; i < d.explored.length; i++) d.explored[i] = 1;
+  out.v2 = r;
+}
+// E: endless mode, district 7
+{
+  const r = newRun({ cls: 'kowalka', night: 2, seed: 1357, daily: null, mode: 'endless' });
+  r.depth = 6; r.phase = 'path'; r.pathOptions = [{ theme: 'cmentarz', name: 'Cmentarz', danger: 3 }];
+  choosePath(r, 'cmentarz');
+  out.endless = r;
 }
 // D: about to die
 {

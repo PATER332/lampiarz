@@ -2,10 +2,10 @@
 // receives Fx events for animation/audio, and persists the Run as JSON.
 
 import { BALANCE } from './balance';
-import { CLASSES, ENEMIES, EVENT_MAP, EVENTS, PATH_THEMES, RELIC_MAP, RELICS, THEMES } from './content';
+import { CLASSES, ENEMIES, EVENT_MAP, EVENTS, PATH_THEMES, RELIC_MAP, RELICS, THEMES, WEATHERS } from './content';
 import { bfs, DIRS4, DIRS8, dist, inBounds, lineOfSight, manhattan } from './grid';
 import { computeLight, type LightState } from './light';
-import { generateDistrict, makeEnemy, rollEnemyType } from './mapgen';
+import { gasicielCap, generateDistrict, makeEnemy, rollEnemyType, weatherFor } from './mapgen';
 import { hashString, Rng } from './rng';
 import type {
   Action,
@@ -19,6 +19,7 @@ import type {
   PathOption,
   Point,
   Run,
+  RunMode,
   ThemeId,
   Tone,
   Workshop,
@@ -49,7 +50,9 @@ export const enemyAt = (d: District, x: number, y: number) => d.enemies.find((e)
 export const itemAt = (d: District, x: number, y: number) => d.items.find((i) => i.x === x && i.y === y);
 const isWall = (d: District, x: number, y: number) => !inBounds(d.w, d.h, x, y) || d.tiles[y * d.w + x] === TILE_WALL;
 export const braziers = (d: District) => d.lamps.filter((l) => l.kind === 'brazier');
-export const gateOpen = (d: District) => braziers(d).every((b) => b.lit);
+export const barrelAt = (d: District, x: number, y: number) => (d.barrels ?? []).find((b) => b.x === x && b.y === y);
+export const isEndless = (run: Run) => run.mode === 'endless';
+export const gateOpen = (d: District) => !!d.gateUnlocked || braziers(d).every((b) => b.lit);
 export const isFinal = (run: Run) => run.district.theme === 'latarnia';
 
 function log(run: Run, text: string, tone: Tone = 'info') {
@@ -76,11 +79,17 @@ export interface NewRunOptions {
   night: number;
   seed: number;
   daily: string | null;
+  /** 'endless' = "Do świtu" */
+  mode?: RunMode;
+  /** permanent upgrades from the profile (ignored for the daily night) */
+  mastery?: Record<string, number>;
 }
 
 export function newRun(opts: NewRunOptions): Run {
   const def = CLASSES[opts.cls];
-  const maxHp = def.hp - (opts.night >= 5 ? 1 : 0);
+  const mastery = opts.daily ? {} : { ...(opts.mastery ?? {}) };
+  const lv = (id: string) => mastery[id] ?? 0;
+  const maxHp = def.hp - (opts.night >= 5 ? 1 : 0) + lv('hart');
   const run: Run = {
     version: RUN_VERSION,
     seed: opts.seed >>> 0,
@@ -96,9 +105,9 @@ export function newRun(opts: NewRunOptions): Run {
       facing: { x: 1, y: 0 },
       hp: maxHp,
       maxHp,
-      oil: def.startOil,
-      maxOil: def.maxOil,
-      embers: 0,
+      oil: Math.min(def.maxOil + lv('zapas'), def.startOil + lv('zapas')),
+      maxOil: def.maxOil + lv('zapas'),
+      embers: 4 * lv('kieszen'),
       relics: [],
       lanternTimer: 0,
     },
@@ -127,10 +136,13 @@ export function newRun(opts: NewRunOptions): Run {
     seenEnemies: [],
     seenRelics: [],
     summary: null,
+    mode: opts.mode ?? 'normal',
+    mastery,
   };
   enterDistrict(run, 'stare');
   log(run, 'Zmierzch. Miasto tonie w mroku, a latarnie czekają na płomień.', 'lore');
   log(run, 'Zapal trzy znicze, by otworzyć bramę do następnej dzielnicy.', 'info');
+  if (run.mode === 'endless') log(run, 'Tryb „Do świtu”: dzielnice nie mają końca. Ile wytrzymasz?', 'lore');
   return run;
 }
 
@@ -157,10 +169,16 @@ function enterDistrict(run: Run, theme: ThemeId) {
   const ctx = ctxOf(run);
   exploreVisible(ctx);
   if (theme === 'latarnia') {
-    log(run, 'Cypel Latarni. Gdzieś w mroku oddycha Matka Mroku.', 'lore');
-    log(run, 'Zapal trzy znicze, a potem latarnię morską — albo rozprosz Matkę.', 'info');
+    const p = run.player;
+    p.hp = p.maxHp;
+    gainOil(run, BALANCE.boss.arrivalOil);
+    log(run, 'Cypel Latarni. Wiatr od morza przywraca ci siły (pełne zdrowie, +2 oleju).', 'lore');
+    log(run, 'Matka Mroku śpi przy latarni morskiej. Obudzi się, gdy zapalisz pierwszy znicz.', 'warn');
+    log(run, 'Cel: zapal 3 znicze, potem latarnię morską (1 olej) — albo rozprosz Matkę.', 'info');
   } else {
     log(run, `Dzielnica ${run.depth}: ${d.name}.`, 'lore');
+    const w = d.weather ?? 'jasna';
+    if (w !== 'jasna') log(run, `${WEATHERS[w].name}. ${WEATHERS[w].desc}`, 'warn');
   }
 }
 
@@ -237,6 +255,13 @@ function doMove(ctx: Ctx, dx: number, dy: number): boolean {
     damageEnemy(ctx, enemy, meleeDamage(run));
     return true;
   }
+  const barrel = barrelAt(d, nx, ny);
+  if (barrel) {
+    ctx.fx.push({ k: 'attack', from: -1, x: p.x, y: p.y, dx, dy });
+    log(run, 'Rozbijasz beczkę — olej bucha ogniem!', 'warn');
+    explodeBarrel(ctx, barrel);
+    return true;
+  }
   const lamp = lampAt(d, nx, ny);
   if (lamp) {
     if (!lamp.lit) return lightLamp(ctx, lamp);
@@ -265,7 +290,7 @@ function doMove(ctx: Ctx, dx: number, dy: number): boolean {
 }
 
 function emberAmount(run: Run, base: number): number {
-  let v = base * run.district.mods.emberMult;
+  let v = base * run.district.mods.emberMult * (run.district.weather === 'pelnia' ? BALANCE.weather.moonEmbers : 1);
   if (hasRelic(run, 'kieszen_zaru')) v *= 1.5;
   return Math.max(1, Math.round(v));
 }
@@ -288,7 +313,7 @@ function pickup(ctx: Ctx, item: Item) {
   const d = run.district;
   switch (item.kind) {
     case 'oil': {
-      const amt = item.amount + (run.cls === 'alchemik' ? 1 : 0);
+      const amt = item.amount + (run.cls === 'alchemik' ? 1 : 0) + (d.weather === 'deszcz' ? 1 : 0);
       const got = gainOil(run, amt);
       if (got <= 0) {
         log(run, 'Zbiornik pełny — kanister zostaje na później.', 'info');
@@ -361,7 +386,8 @@ function lightLamp(ctx: Ctx, lamp: Lamp): boolean {
   }
   run.stats.lampsLit++;
   ctx.fx.push({ k: 'light', x: lamp.x, y: lamp.y, kind: lamp.kind });
-  const wasOpen = lamp.kind === 'brazier' ? braziers(d).filter((b) => b !== lamp).every((b) => b.lit) : false;
+  const wasOpen = lamp.kind === 'brazier' && !d.gateUnlocked && braziers(d).every((b) => b.lit);
+  if (wasOpen) d.gateUnlocked = true;
   recompute(ctx);
   holyBurn(ctx);
   if (lamp.kind === 'lighthouse') {
@@ -372,9 +398,10 @@ function lightLamp(ctx: Ctx, lamp: Lamp): boolean {
   if (lamp.kind === 'brazier') {
     const lit = braziers(d).filter((b) => b.lit).length;
     if (wasOpen) {
-      log(run, isFinal(run) ? 'Wszystkie znicze płoną — zapal latarnię morską!' : 'Wszystkie znicze płoną — brama się otwiera!', 'good');
+      log(run, isFinal(run) ? 'Wszystkie znicze płoną — latarnia morska czeka na płomień!' : 'Wszystkie znicze płoną — brama otwiera się na dobre!', 'good');
       ctx.fx.push({ k: 'gate', open: true });
     } else log(run, `Znicz zapłonął (${lit}/3).`, 'good');
+    maybeCallMiniboss(ctx);
   } else {
     log(run, cost === 0 ? 'Latarnia zapłonęła — za darmo.' : 'Latarnia zapłonęła.', 'good');
   }
@@ -465,16 +492,19 @@ function doAbility(ctx: Ctx): boolean {
     ctx.fx.push({ k: 'shake', power: 6 });
     let hits = 0;
     const reach = 1 + range;
+    const struck = new Set<Enemy>();
     for (const dir of DIRS4) {
       for (let k = 1; k <= reach; k++) {
         const e = enemyAt(d, p.x + dir.x * k, p.y + dir.y * k);
-        if (!e) continue;
+        // an enemy knocked one tile further must not be hit a second time
+        if (!e || struck.has(e)) continue;
+        struck.add(e);
         hits++;
         if (!damageEnemy(ctx, e, 2 + bonus)) continue;
         if (e.type === 'matka') continue;
         const tx = e.x + dir.x;
         const ty = e.y + dir.y;
-        if (isWall(d, tx, ty) || lampAt(d, tx, ty) || enemyAt(d, tx, ty)) {
+        if (isWall(d, tx, ty) || lampAt(d, tx, ty) || enemyAt(d, tx, ty) || barrelAt(d, tx, ty) || (run.player.x === tx && run.player.y === ty)) {
           ctx.fx.push({ k: 'text', x: e.x, y: e.y, text: 'łup!', color: '#ffb27a' });
           damageEnemy(ctx, e, 1);
         } else {
@@ -489,9 +519,12 @@ function doAbility(ctx: Ctx): boolean {
   } else {
     const r = 1 + range;
     let n = 0;
+    const blow: NonNullable<District['barrels']> = [];
     for (let y = p.y - r; y <= p.y + r; y++) {
       for (let x = p.x - r; x <= p.x + r; x++) {
-        if ((x === p.x && y === p.y) || isWall(d, x, y) || lampAt(d, x, y)) continue;
+        const b = barrelAt(d, x, y);
+        if (b) blow.push(b);
+        if ((x === p.x && y === p.y) || isWall(d, x, y) || lampAt(d, x, y) || b) continue;
         const ex = d.burning.find((b) => b.x === x && b.y === y);
         if (ex) ex.t = 4;
         else d.burning.push({ x, y, t: 4 });
@@ -503,16 +536,96 @@ function doAbility(ctx: Ctx): boolean {
     }
     ctx.fx.push({ k: 'flare', x: p.x, y: p.y, r: 1.8 + range, color: '#ff7b3a' });
     log(run, `Pożoga: ${n} pól w ogniu.`, 'info');
+    for (const b of blow) if ((d.barrels ?? []).includes(b)) explodeBarrel(ctx, b);
     recompute(ctx);
     holyBurn(ctx);
   }
   return true;
 }
 
+
+// ------------------------------------------------------------------ barrels, mini-boss
+function explodeBarrel(ctx: Ctx, b: NonNullable<District['barrels']>[number]) {
+  const { run } = ctx;
+  const d = run.district;
+  const B = BALANCE.barrels;
+  d.barrels = (d.barrels ?? []).filter((x) => x !== b);
+  run.stats.barrelsBlown = (run.stats.barrelsBlown ?? 0) + 1;
+  ctx.fx.push({ k: 'explode', x: b.x, y: b.y });
+  ctx.fx.push({ k: 'shake', power: 9 });
+  for (let y = b.y - 1; y <= b.y + 1; y++)
+    for (let x = b.x - 1; x <= b.x + 1; x++) {
+      if (isWall(d, x, y) || lampAt(d, x, y) || barrelAt(d, x, y)) continue;
+      if (run.player.x === x && run.player.y === y) continue;
+      const ex = d.burning.find((q) => q.x === x && q.y === y);
+      if (ex) ex.t = 4;
+      else d.burning.push({ x, y, t: 4 });
+    }
+  let kills = 0;
+  for (const e of [...d.enemies]) {
+    if (dist(e, b) > B.radius + 0.01) continue;
+    if (!damageEnemy(ctx, e, B.damage)) kills++;
+  }
+  if (kills > (run.stats.bestBlast ?? 0)) run.stats.bestBlast = kills;
+  if (kills) log(run, `Wybuch beczki rozprasza ${kills}!`, 'good');
+  // chain reaction
+  for (const o of [...(d.barrels ?? [])]) if (dist(o, b) <= B.radius + 0.01 && (d.barrels ?? []).includes(o)) explodeBarrel(ctx, o);
+  recompute(ctx);
+  if (!isOver(run)) holyBurn(ctx);
+}
+
+function weatherTick(ctx: Ctx) {
+  const { run } = ctx;
+  const d = run.district;
+  if (d.weather !== 'deszcz' || d.turn % BALANCE.weather.rainEvery !== 0) return;
+  const lit = d.lamps.filter((l) => l.lit && l.kind === 'lamp');
+  if (!lit.length) return;
+  const l = ctx.rng.pick(lit);
+  l.lit = false;
+  ctx.fx.push({ k: 'snuff', x: l.x, y: l.y });
+  log(run, 'Ulewa gasi jedną z latarni.', 'warn');
+}
+
+/** Kominiarz Cieni comes down from the roofs when the second brazier starts burning. */
+function maybeCallMiniboss(ctx: Ctx) {
+  const { run } = ctx;
+  const d = run.district;
+  if (d.bossCalled || d.scripted || isFinal(run)) return;
+  const K = BALANCE.kominiarz;
+  const here = isEndless(run) ? run.depth % 5 === K.depth : run.depth === K.depth;
+  if (!here) return;
+  if (braziers(d).filter((b) => b.lit).length < 2) return;
+  d.bossCalled = true;
+  const e = spawnShadow(ctx, undefined, 'kominiarz');
+  if (!e) return;
+  e.elite = false;
+  e.hp = e.maxHp = ENEMIES.kominiarz.hp + (run.night >= 3 ? 2 : 0) + Math.floor(Math.max(0, run.depth - 5) / 5);
+  e.soot = K.sootEvery;
+  ctx.fx.push({ k: 'shake', power: 8 });
+  log(run, 'Z dachów schodzi Kominiarz Cieni! Gasi latarnie sadzą — pokonaj go, a zostawi relikt.', 'bad');
+}
+
+function killMiniboss(ctx: Ctx, e: Enemy) {
+  const { run } = ctx;
+  run.stats.minibossSlain = (run.stats.minibossSlain ?? 0) + 1;
+  const pool = RELICS.filter((r) => !r.shopless && r.unlock === null && !hasRelic(run, r.id));
+  if (pool.length) {
+    const r = ctx.rng.pick(pool);
+    grantRelic(run, r.id);
+    recompute(ctx);
+    log(run, `Kominiarz rozsypuje się w sadzę. Zostaje ${r.name}.`, 'good');
+    ctx.fx.push({ k: 'flare', x: e.x, y: e.y, r: 2, color: '#f0c46c' });
+  } else log(run, 'Kominiarz rozsypuje się w sadzę.', 'good');
+}
+
 // ------------------------------------------------------------------ combat
 /** Returns true if the enemy survived. */
 function damageEnemy(ctx: Ctx, e: Enemy, amount: number): boolean {
   e.hp -= amount;
+  if (e.type === 'gasiciel') {
+    e.snuff = 0;
+    e.snuffTarget = null;
+  }
   ctx.fx.push({ k: 'hit', x: e.x, y: e.y, amount, target: 'enemy' });
   if (e.hp > 0) return true;
   killEnemy(ctx, e);
@@ -528,7 +641,10 @@ function killEnemy(ctx: Ctx, e: Enemy) {
   ctx.fx.push({ k: 'death', x: e.x, y: e.y, type: e.type });
   const def = ENEMIES[e.type];
   if (!deepNight(run)) gainEmbers(ctx, emberAmount(run, def.embers + (e.elite ? 1 : 0)), e.x, e.y);
-  if (run.player.oil <= 1) {
+  if (e.type === 'gasiciel') {
+    const got = gainOil(run, BALANCE.gasiciel.killOil);
+    ctx.fx.push({ k: 'text', x: e.x, y: e.y, text: got ? `płomień wraca +${got} olej` : 'płomień wraca', color: '#e8b04b' });
+  } else if (run.player.oil <= 1) {
     gainOil(run, 1);
     ctx.fx.push({ k: 'text', x: e.x, y: e.y, text: 'iskra +1 olej', color: '#e8b04b' });
   } else if (ctx.rng.chance(BALANCE.enemies.oilDropChance) && gainOil(run, 1) > 0) {
@@ -537,6 +653,7 @@ function killEnemy(ctx: Ctx, e: Enemy) {
   if (hasRelic(run, 'pijawka') && d.killCounter % 2 === 0 && gainOil(run, 1) > 0) {
     ctx.fx.push({ k: 'text', x: e.x, y: e.y, text: 'pijawka +1', color: '#e8b04b' });
   }
+  if (e.type === 'kominiarz') killMiniboss(ctx, e);
   if (e.type === 'matka') {
     run.bossSlain = true;
     log(run, 'Matka Mroku rozpada się w szary dym. Noc pęka.', 'good');
@@ -603,7 +720,7 @@ function nearestDark(ctx: Ctx, from: Point): Point | null {
   const { run } = ctx;
   const d = run.district;
   const free = (x: number, y: number) =>
-    !isWall(d, x, y) && !lampAt(d, x, y) && !(run.player.x === x && run.player.y === y);
+    !isWall(d, x, y) && !lampAt(d, x, y) && !barrelAt(d, x, y) && !(run.player.x === x && run.player.y === y);
   const dd = bfs(d.w, d.h, [from], free);
   let best: Point | null = null;
   let bestD = Infinity;
@@ -626,13 +743,13 @@ function endTurn(ctx: Ctx) {
   const p = run.player;
   d.turn++;
   run.stats.turns++;
-  if (d.turn === BALANCE.mrok.deepNightTurn) {
+  if (d.turn === BALANCE.mrok.deepNightTurn && !d.scripted) {
     log(run, 'Zapada głęboka noc: mrok rośnie dwa razy szybciej, a cienie nie zostawiają żaru.', 'bad');
   }
 
   // lantern consumption
-  p.lanternTimer++;
-  const every = hasRelic(run, 'oszczedny_palnik') ? BALANCE.lantern.burnEveryFrugal : BALANCE.lantern.burnEvery;
+  if (!d.scripted) p.lanternTimer++;
+  const every = lanternBurnEvery(run);
   if (p.lanternTimer >= every) {
     p.lanternTimer = 0;
     if (p.oil > 0) {
@@ -640,6 +757,8 @@ function endTurn(ctx: Ctx) {
       if (p.oil > 0 && p.oil <= 2) log(run, 'Knot syczy — zostało mało oleju.', 'warn');
     }
   }
+
+  weatherTick(ctx);
 
   recompute(ctx);
   enemyPhase(ctx);
@@ -655,15 +774,22 @@ function endTurn(ctx: Ctx) {
   if (isOver(run)) return;
 
   recompute(ctx);
-  mrokTick(ctx);
+  if (!d.scripted) mrokTick(ctx);
   recompute(ctx);
   exploreVisible(ctx);
+}
+
+/** Turns per 1 oil burnt by the hand lantern. */
+export function lanternBurnEvery(run: Run): number {
+  const base = hasRelic(run, 'oszczedny_palnik') ? BALANCE.lantern.burnEveryFrugal : BALANCE.lantern.burnEvery;
+  return base + 3 * (run.mastery?.knot ?? 0);
 }
 
 const isOver = (run: Run) => run.phase === 'victory' || run.phase === 'defeat';
 
 /** After a long stay in one district the night deepens: faster mrok, no embers from shadows. */
 export function deepNight(run: Run): boolean {
+  if (run.district.scripted) return false;
   return run.district.turn >= BALANCE.mrok.deepNightTurn;
 }
 
@@ -671,13 +797,17 @@ export function mrokRate(run: Run): number {
   const d = run.district;
   const M = BALANCE.mrok;
   const lit = d.lamps.filter((l) => l.lit).length;
-  const base = (M.base + M.perDepth * (run.depth - 1)) * d.mods.mrokMult * (run.night >= 3 ? 1.25 : 1);
+  const W = BALANCE.weather;
+  const weather = d.weather === 'mgla' ? W.fogMrok : d.weather === 'pelnia' ? W.moonMrok : 1;
+  const endless = isEndless(run) ? 1 + BALANCE.endless.extraMrokPerDepth * Math.max(0, run.depth - 5) : 1;
+  const base = (M.base + M.perDepth * (Math.min(run.depth, 12) - 1)) * d.mods.mrokMult * (run.night >= 3 ? 1.25 : 1) * weather * endless;
   const rate = Math.max(M.minRate, base - M.perLitLamp * lit);
   return deepNight(run) ? rate * 2 : rate;
 }
 
 function maxAlive(run: Run) {
-  return BALANCE.mrok.maxAliveBase + BALANCE.mrok.maxAlivePerDepth * run.depth;
+  if (isFinal(run)) return BALANCE.boss.maxShadows;
+  return BALANCE.mrok.maxAliveBase + BALANCE.mrok.maxAlivePerDepth * Math.min(run.depth, 10);
 }
 
 function mrokTick(ctx: Ctx) {
@@ -703,6 +833,7 @@ function spawnShadow(ctx: Ctx, near?: Point, forced?: EnemyType): Enemy | null {
   const ok = (x: number, y: number) =>
     !isWall(d, x, y) &&
     !lampAt(d, x, y) &&
+    !barrelAt(d, x, y) &&
     !enemyAt(d, x, y) &&
     !(p.x === x && p.y === y) &&
     !ctx.light.holy[y * d.w + x] &&
@@ -717,8 +848,7 @@ function spawnShadow(ctx: Ctx, near?: Point, forced?: EnemyType): Enemy | null {
   if (!cands.length) return null;
   const pos = rng.pick(cands);
   let type: EnemyType = forced ?? rollEnemyType(rng, run.depth, d.mods.weights);
-  const playerSafe = ctx.light.holy[p.y * d.w + p.x] === 1;
-  if (!forced && playerSafe && run.depth >= 2 && rng.chance(0.45)) type = 'gasiciel';
+  if (!forced && type === 'gasiciel' && d.enemies.filter((o) => o.type === 'gasiciel').length >= gasicielCap(run.depth, d.theme)) type = 'cien';
   const e = makeEnemy(d.nextId++, type, pos, rng, run.depth);
   d.enemies.push(e);
   const visible = ctx.light.visible[pos.y * d.w + pos.x] === 1;
@@ -735,7 +865,7 @@ interface Maps {
 }
 
 function walkable(d: District, x: number, y: number) {
-  return !isWall(d, x, y) && !lampAt(d, x, y);
+  return !isWall(d, x, y) && !lampAt(d, x, y) && !barrelAt(d, x, y);
 }
 
 function buildMaps(ctx: Ctx): Maps {
@@ -817,6 +947,7 @@ function actEnemy(ctx: Ctx, e: Enemy, maps: Maps) {
   const canAny = (x: number, y: number) => walkable(d, x, y) && !occupiedBy(ctx, x, y, e);
   const name = def.name + (e.elite ? ' (elita)' : '');
 
+
   switch (e.type) {
     case 'cien':
     case 'smigacz':
@@ -852,7 +983,7 @@ function actEnemy(ctx: Ctx, e: Enemy, maps: Maps) {
           const nx = e.x + dir.x;
           const ny = e.y + dir.y;
           if (nx === p.x && ny === p.y) {
-            damagePlayer(ctx, def.damage, name, e);
+            damagePlayer(ctx, def.damage + (e.elite ? 1 : 0), name, e);
             return;
           }
           if (!canDark(nx, ny)) return;
@@ -899,11 +1030,18 @@ function actEnemy(ctx: Ctx, e: Enemy, maps: Maps) {
       e.snuffTarget = target.id;
       if (adjacent(e, target)) {
         e.snuff = (e.snuff ?? 0) + 1;
-        const need = hasRelic(run, 'wiatrochron') ? 2 : 1;
+        const need = snuffNeed(run, target);
         if (e.snuff >= need) {
           snuffLamp(ctx, target, 'Gasiciel');
           e.snuff = 0;
           e.snuffTarget = null;
+        } else {
+          const left = need - e.snuff;
+          ctx.fx.push({ k: 'text', x: target.x, y: target.y, text: `gaśnie za ${left}`, color: '#c8a4ff' });
+          if (e.snuff === 1) {
+            const what = target.kind === 'brazier' ? 'znicz' : 'latarnię';
+            log(run, `Gasiciel gasi ${what}! ${left === 1 ? 'Została 1 tura' : `Zostały ${left} tury`} — uderz go.`, 'warn');
+          }
         }
         return;
       }
@@ -915,8 +1053,51 @@ function actEnemy(ctx: Ctx, e: Enemy, maps: Maps) {
       }
       return;
     }
+    case 'kominiarz': {
+      const K = BALANCE.kominiarz;
+      e.soot = (e.soot ?? K.sootEvery) - 1;
+      if (e.soot <= 0) {
+        e.soot = K.sootEvery;
+        const target = sootTarget(run, e);
+        if (target) {
+          snuffLamp(ctx, target, 'Kominiarz');
+          ctx.fx.push({ k: 'text', x: target.x, y: target.y, text: 'sadza!', color: '#9a9aa8' });
+          recompute(ctx);
+          return;
+        }
+      }
+      if (adjacent(e, p)) {
+        // heavy brush: after a blow he needs a turn to swing again
+        if (e.stride) {
+          e.stride = 0;
+          return;
+        }
+        e.stride = 1;
+        ctx.fx.push({ k: 'attack', from: e.id, x: e.x, y: e.y, dx: p.x - e.x, dy: p.y - e.y });
+        damagePlayer(ctx, def.damage + (run.night >= 3 ? 1 : 0), name, e);
+        return;
+      }
+      e.stride = 0;
+      const step = stepToward(d, e, maps.dark, canDark, p);
+      if (step) {
+        e.x = step.x;
+        e.y = step.y;
+      }
+      return;
+    }
     case 'matka': {
       const B = BALANCE.boss;
+      if (e.dormant) {
+        const anyLit = d.lamps.some((l) => l.kind === 'brazier' && l.lit);
+        if (!anyLit && dist(e, p) > B.wakeDistance && e.hp >= e.maxHp) return;
+        e.dormant = false;
+        e.pulse = B.pulseEvery;
+        e.brood = B.broodEvery;
+        ctx.fx.push({ k: 'shake', power: 10 });
+        ctx.fx.push({ k: 'text', x: e.x, y: e.y, text: 'BUDZI SIĘ!', color: '#c8a4ff' });
+        log(run, 'Matka Mroku budzi się! Zaćmienie co ' + B.pulseEvery + ' tur — trzymaj się z dala od jej kręgu.', 'bad');
+        return;
+      }
       e.pulse = (e.pulse ?? B.pulseEvery) - 1;
       e.brood = (e.brood ?? B.broodEvery) - 1;
       if (e.pulse <= 0) {
@@ -925,7 +1106,7 @@ function actEnemy(ctx: Ctx, e: Enemy, maps: Maps) {
         ctx.fx.push({ k: 'shake', power: 8 });
         let n = 0;
         for (const l of d.lamps) {
-          if (l.lit && l.kind !== 'lighthouse' && dist(l, e) <= B.pulseRadius + 0.01) {
+          if (l.lit && l.kind === 'lamp' && dist(l, e) <= B.pulseRadius + 0.01) {
             snuffLamp(ctx, l, 'Matka Mroku', true);
             n++;
           }
@@ -937,26 +1118,20 @@ function actEnemy(ctx: Ctx, e: Enemy, maps: Maps) {
       }
       if (e.brood <= 0) {
         e.brood = B.broodEvery;
-        for (let i = 0; i < 2; i++) spawnShadow(ctx, e, 'cien');
-        log(run, 'Matka Mroku rodzi nowe cienie.', 'warn');
+        if (d.enemies.filter((o) => o.type !== 'matka').length < maxAlive(run)) {
+          for (let i = 0; i < B.brood; i++) spawnShadow(ctx, e, 'cien');
+          log(run, B.brood > 1 ? 'Matka Mroku rodzi nowe cienie.' : 'Matka Mroku rodzi nowy cień.', 'warn');
+        }
       }
       if (adjacent(e, p)) {
         ctx.fx.push({ k: 'attack', from: e.id, x: e.x, y: e.y, dx: p.x - e.x, dy: p.y - e.y });
-        damagePlayer(ctx, B.damage, 'Matka Mroku', e);
+        damagePlayer(ctx, B.damage + (run.night >= 3 ? 1 : 0), 'Matka Mroku', e);
         return;
       }
-      const litB = d.lamps.filter((l) => l.lit && l.kind === 'brazier');
-      let step: Point | null;
-      if (litB.length) {
-        const map = bfs(
-          d.w,
-          d.h,
-          litB.flatMap((l) => DIRS4.map((dd) => ({ x: l.x + dd.x, y: l.y + dd.y }))).filter((q) => walkable(d, q.x, q.y)),
-          (x, y) => walkable(d, x, y),
-        );
-        const tgt = litB.sort((a, b) => manhattan(a, e) - manhattan(b, e))[0];
-        step = stepToward(d, e, map, canAny, tgt);
-      } else step = stepToward(d, e, maps.any, canAny, p);
+      // she is heavy: one step every other turn
+      e.stride = ((e.stride ?? 0) + 1) % 2;
+      if (e.stride === 0) return;
+      const step = stepToward(d, e, maps.any, canAny, p);
       if (step) {
         e.x = step.x;
         e.y = step.y;
@@ -966,22 +1141,30 @@ function actEnemy(ctx: Ctx, e: Enemy, maps: Maps) {
   }
 }
 
+/** The lamp the Kominiarz throws soot at: the nearest burning street lamp in range (braziers are too hot for soot). */
+export function sootTarget(run: Run, e: Point): Lamp | null {
+  const d = run.district;
+  const K = BALANCE.kominiarz;
+  const lit = d.lamps.filter((l) => l.lit && l.kind === 'lamp' && manhattan(l, e) <= K.sootRange);
+  lit.sort((a, b) => manhattan(a, e) - manhattan(b, e) || a.id - b.id);
+  return lit[0] ?? null;
+}
+
 function snuffLamp(ctx: Ctx, lamp: Lamp, who: string, quiet = false) {
   const { run } = ctx;
   const d = run.district;
-  const wasOpen = gateOpen(d);
   lamp.lit = false;
   ctx.fx.push({ k: 'snuff', x: lamp.x, y: lamp.y });
   if (!quiet) log(run, lamp.kind === 'brazier' ? `${who} zgasił znicz!` : `${who} zgasił latarnię.`, 'bad');
-  if (lamp.kind === 'brazier' && wasOpen) {
-    ctx.fx.push({ k: 'gate', open: false });
-    if (!quiet) log(run, isFinal(run) ? 'Latarnia morska znów jest poza zasięgiem.' : 'Brama się zatrzaskuje.', 'bad');
+  if (lamp.kind === 'brazier' && !quiet && !d.gateUnlocked) {
+    const lit = braziers(d).filter((b) => b.lit).length;
+    log(run, `Płonące znicze: ${lit}/3. Zapal go ponownie.`, 'warn');
   }
 }
 
 function gasicielTarget(ctx: Ctx, e: Enemy): Lamp | null {
   const d = ctx.run.district;
-  const lit = d.lamps.filter((l) => l.lit && l.kind !== 'lighthouse');
+  const lit = d.lamps.filter((l) => l.lit && l.kind !== 'lighthouse' && !(l.kind === 'brazier' && d.gateUnlocked));
   if (!lit.length) return null;
   const map = bfs(d.w, d.h, [e], (x, y) => walkable(d, x, y));
   let best: Lamp | null = null;
@@ -1001,6 +1184,12 @@ function gasicielTarget(ctx: Ctx, e: Enemy): Lamp | null {
     }
   }
   return best;
+}
+
+/** Turns a Gasiciel must spend next to a flame before it goes out. */
+export function snuffNeed(run: Run, lamp: Lamp): number {
+  const G = BALANCE.gasiciel;
+  return (lamp.kind === 'brazier' ? G.snuffBrazier : G.snuffLamp) + (hasRelic(run, 'wiatrochron') ? G.windbreakBonus : 0);
 }
 
 function lampApproachMap(d: District, lamp: Lamp): Int16Array {
@@ -1029,9 +1218,11 @@ export type Intent =
   | { kind: 'move'; to: Point }
   | { kind: 'aim'; tiles: Point[] }
   | { kind: 'snuff'; lamp: Point; progress: number; need: number }
+  | { kind: 'hunt'; to: Point; lamp: Point }
   | { kind: 'drain'; target: Point }
   | { kind: 'wait' }
-  | { kind: 'boss'; pulse: number; brood: number; to: Point | null; attack: boolean };
+  | { kind: 'boss'; pulse: number; brood: number; to: Point | null; attack: boolean; dormant: boolean }
+  | { kind: 'soot'; left: number; lamp: Point | null; attack: boolean };
 
 export function computeIntents(run: Run, light: LightState): Map<number, Intent> {
   const ctx: Ctx = { run, rng: new Rng(1), fx: [], light };
@@ -1043,6 +1234,12 @@ export function computeIntents(run: Run, light: LightState): Map<number, Intent>
     const canDark = (x: number, y: number) => walkable(d, x, y) && !light.holy[y * d.w + x] && !occupiedBy(ctx, x, y, e);
     const canAny = (x: number, y: number) => walkable(d, x, y) && !occupiedBy(ctx, x, y, e);
     switch (e.type) {
+      case 'kominiarz': {
+        const left = (e.soot ?? BALANCE.kominiarz.sootEvery) - 1;
+        const t = sootTarget(run, e);
+        out.set(e.id, { kind: 'soot', left, lamp: t ? { x: t.x, y: t.y } : null, attack: adjacent(e, p) && !e.stride });
+        break;
+      }
       case 'cien':
       case 'smigacz':
       case 'smolnik': {
@@ -1074,12 +1271,12 @@ export function computeIntents(run: Run, light: LightState): Map<number, Intent>
       }
       case 'gasiciel': {
         const t = gasicielTarget(ctx, e);
-        const need = hasRelic(run, 'wiatrochron') ? 2 : 1;
         if (t) {
+          const need = snuffNeed(run, t);
           if (adjacent(e, t)) out.set(e.id, { kind: 'snuff', lamp: t, progress: e.snuffTarget === t.id ? e.snuff ?? 0 : 0, need });
           else {
             const s = stepToward(d, e, lampApproachMap(d, t), canAny, t);
-            out.set(e.id, s ? { kind: 'move', to: s } : { kind: 'wait' });
+            out.set(e.id, s ? { kind: 'hunt', to: s, lamp: { x: t.x, y: t.y } } : { kind: 'wait' });
           }
         } else if (adjacent(e, p)) out.set(e.id, { kind: 'drain', target: p });
         else {
@@ -1091,8 +1288,9 @@ export function computeIntents(run: Run, light: LightState): Map<number, Intent>
       case 'matka': {
         out.set(e.id, {
           kind: 'boss',
-          pulse: (e.pulse ?? 1) - 1,
-          brood: (e.brood ?? 1) - 1,
+          pulse: e.dormant ? 99 : (e.pulse ?? 1) - 1,
+          brood: e.dormant ? 99 : (e.brood ?? 1) - 1,
+          dormant: !!e.dormant,
           to: null,
           attack: adjacent(e, p),
         });
@@ -1265,7 +1463,7 @@ export function workshopAct(run: Run, a: WorkshopAction, unlocked: Set<string>):
 
 function buildPathOptions(run: Run): PathOption[] {
   const next = run.depth + 1;
-  if (next >= BALANCE.totalDepth) {
+  if (next >= BALANCE.totalDepth && !isEndless(run)) {
     return [{ theme: 'latarnia', name: THEMES.latarnia.name, danger: THEMES.latarnia.danger }];
   }
   const rng = new Rng(hashString(`${run.seed}:paths:${run.depth}`));
@@ -1450,3 +1648,107 @@ export function abandonRun(run: Run) {
 }
 
 export { TILE_FLOOR, TILE_WALL };
+
+// ------------------------------------------------------------------ objective (for the HUD / tutorial)
+export interface Objective {
+  /** short headline, e.g. "Zapal znicze 1/3" */
+  title: string;
+  /** one-sentence hint on how to do it right now */
+  hint: string;
+  /** where to go (null if nothing to point at) */
+  targets: Point[];
+  tone: 'info' | 'warn' | 'good';
+}
+
+/** What should the player do next? Pure: derived from the run state only. */
+export function objective(run: Run): Objective {
+  const d = run.district;
+  const p = run.player;
+  const bz = braziers(d);
+  const lit = bz.filter((b) => b.lit).length;
+  const open = gateOpen(d);
+  const final = isFinal(run);
+  const near = (pts: Point[]) => [...pts].sort((a, b) => manhattan(a, p) - manhattan(b, p));
+  // urgent: a Gasiciel is putting out a flame
+  const snuffer = d.enemies.find((e) => e.type === 'gasiciel' && e.snuffTarget != null && (e.snuff ?? 0) > 0);
+  if (snuffer) {
+    const lamp = d.lamps.find((l) => l.id === snuffer.snuffTarget);
+    if (lamp && lamp.lit) {
+      const left = snuffNeed(run, lamp) - (snuffer.snuff ?? 0);
+      return {
+        title: lamp.kind === 'brazier' ? 'Gasiciel gasi znicz!' : 'Gasiciel gasi latarnię!',
+        hint: `${left === 1 ? 'Została 1 tura' : `Zostały ${left} tury`} — podejdź i uderz go (wejdź na niego).`,
+        targets: [snuffer],
+        tone: 'warn',
+      };
+    }
+  }
+  if (final) {
+    const lh = d.lamps.find((l) => l.kind === 'lighthouse');
+    if (open && lh && !lh.lit) {
+      return {
+        title: 'Zapal latarnię morską!',
+        hint: p.oil >= BALANCE.light.lighthouseCost ? 'Podejdź do wieży i wejdź w nią (koszt: 1 olej). To koniec nocy.' : 'Potrzebujesz kropli oleju — zbierz kanister albo zgaś latarnię (F).',
+        targets: [lh],
+        tone: 'good',
+      };
+    }
+  }
+  if (open && !final) {
+    return { title: 'Brama otwarta!', hint: 'Idź do bramy (świecąca rama) i wejdź w nią, by przejść dalej.', targets: [d.gate], tone: 'good' };
+  }
+  const unlit = near(bz.filter((b) => !b.lit));
+  const cost = BALANCE.light.brazierCost;
+  if (p.oil < cost) {
+    const oil = near(d.items.filter((it) => it.kind === 'oil'));
+    return {
+      title: `Brakuje oleju (masz ${p.oil}, znicz kosztuje ${cost})`,
+      hint: oil.length ? 'Zbierz kanister oleju (niebieska bańka) albo zgaś zapaloną latarnię klawiszem F.' : 'Zgaś zapaloną latarnię (stań obok, F) — odda olej. Albo rozprosz gasiciela.',
+      targets: oil.slice(0, 1),
+      tone: 'warn',
+    };
+  }
+  return {
+    title: `Zapal znicze ${lit}/3`,
+    hint: final
+      ? 'Wejdź w znicz, by go zapalić (2 oleju). Trzy znicze otworzą drogę do latarni morskiej.'
+      : 'Wejdź w znicz, by go zapalić (2 oleju). Trzy płonące znicze otworzą bramę na dobre.',
+    targets: unlit,
+    tone: 'info',
+  };
+}
+
+// ------------------------------------------------------------------ scripting hooks (tutorial)
+/** Re-evaluates light and exploration after a district was edited from outside the engine. */
+export function refreshView(run: Run) {
+  const ctx = ctxOf(run);
+  exploreVisible(ctx);
+}
+
+/** Places an enemy on (or next to) the given tile. Returns null if there is no free spot nearby. */
+export function spawnScripted(run: Run, type: EnemyType, at: Point): Fx[] {
+  const d = run.district;
+  const p = run.player;
+  const free = (x: number, y: number) =>
+    inBounds(d.w, d.h, x, y) && !isWall(d, x, y) && !lampAt(d, x, y) && !enemyAt(d, x, y) && !(p.x === x && p.y === y) && !(x === d.gate.x && y === d.gate.y);
+  let pos: Point | null = free(at.x, at.y) ? at : null;
+  for (let r = 1; !pos && r <= 3; r++)
+    for (let dy = -r; dy <= r && !pos; dy++)
+      for (let dx = -r; dx <= r && !pos; dx++) if (free(at.x + dx, at.y + dy)) pos = { x: at.x + dx, y: at.y + dy };
+  if (!pos) return [];
+  const rng = new Rng(run.rngState);
+  const e = makeEnemy(d.nextId++, type, pos, rng, 1);
+  e.elite = false;
+  e.hp = e.maxHp = ENEMIES[type].hp;
+  run.rngState = rng.state;
+  d.enemies.push(e);
+  const ctx = ctxOf(run);
+  exploreVisible(ctx);
+  return [{ k: 'spawn', x: pos.x, y: pos.y, visible: ctx.light.visible[pos.y * d.w + pos.x] === 1 }];
+}
+
+
+/** The weather waiting behind a path option (shown on the path screen). */
+export function forecastWeather(run: Run, theme: ThemeId) {
+  return weatherFor(hashString(`${run.seed}:${run.depth + 1}:${theme}`), theme === 'latarnia');
+}

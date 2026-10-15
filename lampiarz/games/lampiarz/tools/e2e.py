@@ -21,6 +21,9 @@ with sync_playwright() as p:
     shot(page, '01-menu')
     page.get_by_role('button', name='Nowa noc').click()
     time.sleep(0.4)
+    shot(page, '02-offer')
+    page.get_by_role('button', name='Od razu do gry').click()
+    time.sleep(0.4)
     shot(page, '02-setup')
     page.get_by_role('button', name='Zapal pierwszą latarnię').click()
     time.sleep(1.0)
@@ -87,6 +90,8 @@ with sync_playwright() as p:
     mp.goto(base); mp.wait_for_selector('.loading.done', state='attached', timeout=8000); time.sleep(1.5)
     shot(mp, '11-mobile-menu')
     mp.get_by_role('button', name='Nowa noc').tap(); time.sleep(0.4)
+    if mp.get_by_role('button', name='Od razu do gry').count():
+        mp.get_by_role('button', name='Od razu do gry').tap(); time.sleep(0.4)
     shot(mp, '12-mobile-setup')
     mp.get_by_role('button', name='Zapal pierwszą latarnię').tap(); time.sleep(0.8)
     mp.get_by_role('button', name='Do roboty').tap(); time.sleep(0.3)

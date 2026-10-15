@@ -506,6 +506,11 @@ export function GameDetail({ slug }: { slug: string }) {
             </nav>
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
               {game.featured ? <span className="pill">Polecana</span> : null}
+              {game.adult ? (
+                <span className="pill age" title="Przemoc, krew i nagłe sceny grozy. Tylko dla dorosłych.">
+                  18+
+                </span>
+              ) : null}
               {gameCategories(game).map((c) => (
                 <Link key={c} to={`/games?kategoria=${c}`} className="tag" style={{ textDecoration: 'none' }}>
                   {categoryName(c)}
@@ -599,7 +604,7 @@ export function GameDetail({ slug }: { slug: string }) {
                   ))}
                 </div>
                 {game.mobile ? (
-                  <p style={{ margin: 0, color: 'var(--muted)', fontSize: 14 }}>Na telefonie: wirtualny pad i stukanie w pola planszy.</p>
+                  <p style={{ margin: 0, color: 'var(--muted)', fontSize: 14 }}>{game.mobileNote ?? 'Na telefonie: wirtualny pad i stukanie w pola planszy.'}</p>
                 ) : (
                   <p style={{ margin: 0, color: 'var(--muted)', fontSize: 14 }}>Wymaga klawiatury i myszy albo pada — na telefonie nie zagrasz.</p>
                 )}
@@ -646,6 +651,10 @@ export function Privacy() {
           ))}
         </ul>
         <p>Dane nie opuszczają twojego urządzenia. Usuniesz je, czyszcząc dane tej witryny w ustawieniach przeglądarki.</p>
+        <h2>Czcionki zewnętrzne</h2>
+        <p>
+          Gra Skrzynkomat pobiera czcionki z Google Fonts (<code>fonts.googleapis.com</code>, <code>fonts.gstatic.com</code>). Przy jej uruchomieniu przeglądarka łączy się z serwerami Google, które widzą techniczne dane połączenia, np. adres IP. Pozostałe gry i sama platforma używają wyłącznie czcionek z tej witryny.
+        </p>
         <h2>Hosting</h2>
         <p>Strona jest hostowana na Vercel. Jak każdy serwer, dostawca hostingu może przetwarzać techniczne dane połączenia (np. adres IP) w celu dostarczenia strony i ochrony przed nadużyciami.</p>
       </div>

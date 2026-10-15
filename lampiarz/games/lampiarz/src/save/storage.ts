@@ -69,6 +69,16 @@ export function loadProfile(): LoadResult<Profile> {
     parsed.settings = { ...DEFAULT_SETTINGS, ...parsed.settings };
     parsed.stats.winsByClass = Object.assign({ lampiarz: 0, kowalka: 0, alchemik: 0 }, parsed.stats.winsByClass);
     if (typeof parsed.tutorialSeen !== 'boolean') parsed.tutorialSeen = true;
+    if (typeof parsed.tutorialDone !== 'boolean') parsed.tutorialDone = false;
+    if (typeof parsed.ash !== 'number' || !Number.isFinite(parsed.ash) || parsed.ash < 0) parsed.ash = 0;
+    if (!parsed.mastery || typeof parsed.mastery !== 'object' || Array.isArray(parsed.mastery)) parsed.mastery = {};
+    // 2.1 had a 'torba' (tool bag) upgrade; its levels carry over to 'kieszen'
+    if (parsed.mastery.torba) {
+      parsed.mastery.kieszen = Math.max(parsed.mastery.kieszen ?? 0, Math.min(3, parsed.mastery.torba));
+      delete parsed.mastery.torba;
+    }
+    // players from before the hint system already know the enemies they have met
+    if (!Array.isArray(parsed.hintsSeen) || !parsed.hintsSeen.every((x) => typeof x === 'string')) parsed.hintsSeen = [...parsed.seenEnemies];
     return { value: parsed, warning: null };
   } catch {
     backupCorrupt(PROFILE_KEY, raw);
@@ -93,7 +103,7 @@ export function validateRun(v: unknown): v is Run {
   if (!isObj(v) || v.version !== RUN_VERSION) return false;
   if (!isNum(v.seed) || !isNum(v.rngState) || !isNum(v.night) || !isNum(v.depth)) return false;
   if (typeof v.cls !== 'string' || !(v.cls in CLASSES)) return false;
-  if (v.depth < 1 || v.depth > BALANCE.totalDepth) return false;
+  if (v.depth < 1 || v.depth > (v.mode === 'endless' ? 999 : BALANCE.totalDepth)) return false;
   const phases = ['play', 'event', 'summary', 'workshop', 'path'];
   if (typeof v.phase !== 'string' || !phases.includes(v.phase)) return false;
   const p = v.player;
@@ -126,6 +136,9 @@ export function loadRun(): LoadResult<Run | null> {
   try {
     const parsed: unknown = JSON.parse(raw);
     if (!validateRun(parsed)) throw new Error('invalid run');
+    // saves from 2.0/2.1 (tools, survivors) are cleaned up
+    migrateKit(parsed);
+    parsed.mode ??= 'normal';
     return { value: parsed, warning: null };
   } catch {
     backupCorrupt(RUN_KEY, raw);
@@ -135,6 +148,7 @@ export function loadRun(): LoadResult<Run | null> {
 }
 
 export function saveRun(run: Run): boolean {
+  if (run.tutorial) return true; // the tutorial is never saved
   const s = storage();
   if (!s) return false;
   if (run.phase === 'victory' || run.phase === 'defeat') {
@@ -161,4 +175,16 @@ export function resetAll() {
   const s = storage();
   s?.removeItem(RUN_KEY);
   s?.removeItem(PROFILE_KEY);
+}
+
+/** Saves from 2.0/2.1 carried one-use tools; they are gone now. */
+function migrateKit(run: Run) {
+  const p = run.player as Run['player'] & { tools?: unknown; kit?: unknown };
+  delete p.tools;
+  delete p.kit;
+  const d = run.district as Run['district'] & { survivors?: unknown; flares?: unknown };
+  delete d.survivors;
+  delete d.flares;
+  d.items = d.items.filter((it) => (it.kind as string) !== 'tool');
+  for (const e of d.enemies as (Run['district']['enemies'][number] & { stun?: unknown })[]) delete e.stun;
 }

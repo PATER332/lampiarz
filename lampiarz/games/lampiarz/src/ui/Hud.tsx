@@ -1,7 +1,8 @@
 import { BALANCE } from '../game/balance';
-import { CLASSES, NIGHTS, RELIC_MAP } from '../game/content';
-import { abilityCost, braziers, deepNight, gateOpen, hasRelic, isFinal, lampAt, mrokRate } from '../game/engine';
+import { CLASSES, NIGHTS, RELIC_MAP, WEATHERS } from '../game/content';
+import { abilityCost, braziers, deepNight, gateOpen, isEndless, isFinal, lampAt, lanternBurnEvery, mrokRate } from '../game/engine';
 import { DIRS4 } from '../game/grid';
+import { currentObjective } from '../game/tutorial';
 import type { Action, Run } from '../game/types';
 import { IconArrow, IconBrazier, IconEmber, IconFire, IconFlare, IconGate, IconHammer, IconHand, IconHeart, IconHourglass, IconMoon, IconOil, IconPause, IconSound, RelicIcon } from './icons';
 
@@ -19,6 +20,7 @@ export function Hud({
   muted,
   onMute,
   inspect,
+  showHints,
 }: {
   run: Run;
   onAction: (a: Action) => void;
@@ -26,6 +28,7 @@ export function Hud({
   muted: boolean;
   onMute: () => void;
   inspect: InspectInfo | null;
+  showHints: boolean;
 }) {
   const p = run.player;
   const d = run.district;
@@ -33,7 +36,7 @@ export function Hud({
   const cost = abilityCost(run);
   const lit = braziers(d).filter((b) => b.lit).length;
   const open = gateOpen(d);
-  const every = hasRelic(run, 'oszczedny_palnik') ? BALANCE.lantern.burnEveryFrugal : BALANCE.lantern.burnEvery;
+  const every = lanternBurnEvery(run);
   const burnSoon = p.oil > 0 && every - p.lanternTimer <= 2;
   const mrokPct = Math.min(100, (d.mrok / BALANCE.mrok.threshold) * 100);
   const rate = mrokRate(run);
@@ -41,9 +44,12 @@ export function Hud({
   const deep = deepNight(run);
   const adjLamp = DIRS4.map((dir) => lampAt(d, p.x + dir.x, p.y + dir.y)).find((l) => l && (l.kind === 'lamp' || !l.lit));
   const interactLabel = adjLamp ? (adjLamp.lit ? 'Zbierz olej' : 'Zapal') : 'Latarnia';
+  const weather = d.weather ?? 'jasna';
   const AbilityIcon = run.cls === 'kowalka' ? IconHammer : run.cls === 'alchemik' ? IconFire : IconFlare;
   const logs = run.log.slice(-4);
   const lowHp = p.hp <= 1;
+  const obj = currentObjective(run);
+  const inTutorial = !!run.tutorial && !run.tutorial.done;
 
   return (
     <>
@@ -77,7 +83,14 @@ export function Hud({
         <div className="district">
           <div className="name">{d.name}</div>
           <div className="meta">
-            {isFinal(run) ? 'Ostatnia noc' : `Dzielnica ${run.depth} z 5`} · {NIGHTS[run.night - 1].name} · tura {d.turn}
+            {d.scripted ? 'Samouczek' : isFinal(run) ? 'Ostatnia noc' : isEndless(run) ? `Do świtu · dzielnica ${run.depth}` : `Dzielnica ${run.depth} z 5`}
+            {d.scripted ? '' : ` · ${NIGHTS[run.night - 1].name}`} · tura {d.turn}
+            {weather !== 'jasna' && !d.scripted ? (
+              <span className={`weather-inline ${weather}`} title={WEATHERS[weather].desc} tabIndex={0} aria-label={`${WEATHERS[weather].name}: ${WEATHERS[weather].desc}`}>
+                {' · '}
+                {WEATHERS[weather].name}
+              </span>
+            ) : null}
           </div>
           <div className="braziers" aria-label={`Znicze ${lit} z 3`}>
             {braziers(d).map((b) => (
@@ -94,10 +107,11 @@ export function Hud({
               </span>
             )}
           </div>
+
         </div>
 
         <div className="hud-right">
-          <div className={`mrok ${deep ? 'deep' : ''}`} title={`Nowy cień za ok. ${turnsToSpawn} tur`}>
+          <div className={`mrok ${deep ? 'deep' : ''}`} title={`Nowy cień za ok. ${turnsToSpawn} tur`} style={d.scripted ? { visibility: 'hidden' } : undefined}>
             <div className="lbl">
               <IconMoon size={14} />
               <span>{deep ? 'Głęboka noc' : 'Mrok'}</span>
@@ -115,6 +129,15 @@ export function Hud({
           </button>
         </div>
       </div>
+
+      {!inTutorial && run.phase === 'play' ? (
+        <div className={`objective t-${obj.tone}`} role="status" aria-live="polite">
+          <div className="obj-title">
+            <span className="obj-label">Cel</span> {obj.title}
+          </div>
+          {showHints ? <div className="obj-hint">{obj.hint}</div> : null}
+        </div>
+      ) : null}
 
       <div className="hud-bottom">
         <div style={{ display: 'flex', gap: 12, alignItems: 'flex-end' }}>

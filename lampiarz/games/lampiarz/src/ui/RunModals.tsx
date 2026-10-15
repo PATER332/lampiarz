@@ -1,8 +1,10 @@
+import { deathTip } from '../game/tips';
 import { useState } from 'react';
 import { audio } from '../audio/audio';
 import { BALANCE } from '../game/balance';
-import { ACH_MAP, CLASSES, EVENT_MAP, NIGHTS, RELIC_MAP, THEMES } from '../game/content';
-import { eventChoiceAvailable } from '../game/engine';
+import { ACH_MAP, CLASSES, EVENT_MAP, NIGHTS, RELIC_MAP, THEMES, WEATHERS } from '../game/content';
+import { eventChoiceAvailable, forecastWeather, type WorkshopAction } from '../game/engine';
+import { ashFor } from '../game/meta';
 import { seedToCode } from '../game/rng';
 import type { Run, ThemeId } from '../game/types';
 import { Modal, ThemeArt } from './common';
@@ -99,7 +101,7 @@ export function WorkshopModal({
   onAct,
 }: {
   run: Run;
-  onAct: (a: { type: 'buy'; index: number } | { type: 'heal' } | { type: 'oil' } | { type: 'reroll' } | { type: 'leave' }) => string | null;
+  onAct: (a: WorkshopAction) => string | null;
 }) {
   const ws = run.workshop;
   const [msg, setMsg] = useState<string | null>(null);
@@ -214,7 +216,7 @@ export function PathModal({ run, onChoose }: { run: Run; onChoose: (t: ThemeId) 
   const final = opts.length === 1 && opts[0].theme === 'latarnia';
   return (
     <Modal wide labelledBy="path-title">
-      <p className="eyebrow">{final ? 'Ostatnia droga' : `Dzielnica ${run.depth + 1} z 5`}</p>
+      <p className="eyebrow">{final ? 'Ostatnia droga' : run.mode === 'endless' ? `Do świtu · dzielnica ${run.depth + 1}` : `Dzielnica ${run.depth + 1} z 5`}</p>
       <h2 id="path-title">{final ? 'Na cypel' : 'Którędy dalej?'}</h2>
       <p className="lore" style={{ marginBottom: 0 }}>
         {final ? 'Za ostatnią bramą zaczyna się wiatr od morza. Tam czeka latarnia — i to, co jej strzeże.' : 'Dwie ulice, dwa rodzaje nocy. Wybór zostanie z tobą do świtu.'}
@@ -243,6 +245,14 @@ export function PathModal({ run, onChoose }: { run: Run; onChoose: (t: ThemeId) 
                     <i key={i} className={i <= o.danger ? 'on' : ''} />
                   ))}
                 </div>
+                {(() => {
+                  const w = forecastWeather(run, o.theme);
+                  return w !== 'jasna' ? (
+                    <div className={`weather-chip ${w}`} title={WEATHERS[w].desc}>
+                      prognoza: {WEATHERS[w].name}
+                    </div>
+                  ) : null;
+                })()}
               </div>
             </button>
           );
@@ -279,9 +289,20 @@ export function RunEndModal({
         <p className="lore" style={{ margin: '6px auto 0', maxWidth: 420 }}>
           {won
             ? 'Pierwsze promienie słońca wchodzą w uliczki, które jeszcze godzinę temu należały do cieni. Gasisz latarnię. Tej nocy wystarczyło.'
-            : 'Ostatnia iskra syczy i gaśnie. Miasto będzie czekać na kolejnego lampiarza.'}
+            : run.mode === 'endless'
+              ? `Do świtu: ${st.districts} ${st.districts === 1 ? 'dzielnica ocalona' : 'dzielnic ocalonych'}. Tyle nocy wytrzymał ostatni lampiarz.`
+              : 'Ostatnia iskra syczy i gaśnie. Miasto będzie czekać na kolejnego lampiarza.'}
         </p>
       </div>
+      <div className="ash-earned" aria-label="Popiół do Księgi mistrza">
+        +{ashFor(run)} popiołu do Księgi mistrza
+        {(st.minibossSlain ?? 0) > 0 ? ' · Kominiarz pokonany' : ''}
+      </div>
+      {!won && run.killedBy !== 'Porzucona warta' ? (
+        <div className="death-tip">
+          <b>Wskazówka:</b> {deathTip(run)}
+        </div>
+      ) : null}
       <div className="kv">
         <div>
           <span>Dzielnice</span>

@@ -1,0 +1,5 @@
+Fonts bundled with RANDOM CHAOS (subsets converted to WOFF):
+
+- Inter (inter-*.woff) and Inter Display Black / Black Italic (rc-display*.woff, used as "RC Display")
+  Copyright 2016 The Inter Project Authors (https://github.com/rsms/inter).
+  SIL Open Font License 1.1 — https://openfontlicense.org

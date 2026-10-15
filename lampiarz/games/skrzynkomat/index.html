@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="pl">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+    <meta name="color-scheme" content="dark">
+    <meta name="theme-color" content="#0b0f15">
+    <title>Skrzynkomat — EVGAMES</title>
+    <meta name="description" content="Symulator otwierania skrzynek za wirtualne złotówki: 12 skrzynek, 5 poziomów rzadkości, bitwy, upgrader i kontrakty. Bez prawdziwych pieniędzy.">
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;600;700&family=Barlow:wght@400;500;600&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+    <!--APP-->
+  </head>
+  <body>
+<div id="root">
+<div id="menu" class="on">
+  <div id="mbg"></div>
+  <div id="mshow" aria-hidden="true"></div>
+  <div class="mwrap">
+    <div class="mlogo"><i></i>Skrzynkomat</div>
+    <div class="mtag">Symulator otwierania skrzynek</div>
+    <nav class="mnav" id="mnav" aria-label="Menu główne">
+      <div class="mprim"><button class="go" data-m="play" type="button">Graj</button><button class="go alt" data-m="battle" type="button">Bitwa</button></div>
+      <button data-m="exch" type="button">Zamiana skinów</button>
+      <button data-m="inv" type="button">Ekwipunek</button>
+      <button data-m="top" type="button">Topka</button>
+      <button data-m="stats" type="button">Statystyki</button>
+      <button data-m="settings" type="button">Ustawienia</button>
+      <button data-m="help" type="button">Jak grać</button>
+    </nav>
+    <div class="mstripe"></div>
+    <div class="mfoot" id="mfoot"></div>
+    <div class="mver">Wersja 4 · wirtualne saldo, bez prawdziwych pieniędzy</div>
+  </div>
+</div>
+
+<div class="wrap" id="app" hidden>
+  <div class="stick">
+  <header class="top">
+    <div class="logo"><i></i>Skrzynkomat</div>
+    <div class="bar">
+      <div class="bal"><small>Saldo wirtualne</small><b id="bal">0,00 zł</b></div>
+      <button class="me" id="me" type="button" aria-label="Profil"></button>
+      <button class="btn" id="topup" type="button">+ 100 zł</button>
+      <button class="btn" id="openSet" type="button">Ustawienia</button>
+      <button class="btn" id="toMenu" type="button">Menu</button>
+    </div>
+  </header>
+
+  <nav class="tabs" role="tablist">
+    <button role="tab" id="tab-cases" aria-selected="true" data-v="cases">Skrzynki</button>
+    <button role="tab" id="tab-battle" aria-selected="false" data-v="battle">Bitwa</button>
+    <button role="tab" id="tab-inv" aria-selected="false" data-v="inv">Ekwipunek<span id="invn">0</span></button>
+    <button role="tab" id="tab-exch" aria-selected="false" data-v="exch">Zamiana</button>
+    <button role="tab" id="tab-top" aria-selected="false" data-v="top">Topka</button>
+    <button role="tab" id="tab-stats" aria-selected="false" data-v="stats">Statystyki</button>
+  </nav>
+  </div>
+
+  <main>
+    <section id="v-cases">
+      <h2>Wybierz skrzynkę</h2>
+      <p class="sub">Symulator otwierania skrzynek. Wszystko odbywa się za wirtualne złotówki, bez prawdziwych pieniędzy. Szanse na każdy poziom rzadkości widzisz w zawartości skrzynki.</p>
+      <div class="grid" id="caseGrid"></div>
+    </section>
+
+    <section id="v-battle" hidden>
+      <h2>Bitwa</h2>
+      <p class="sub">Ty i rywal otwieracie te same skrzynki. Wygrywa wyższa suma wartości i zabiera wszystkie przedmioty. Gdy nikt nie dołączy, zagrasz z botem.</p>
+      <div class="online" id="bOnline"></div>
+      <div class="bgrid"><div class="panel" id="bForm"></div><div class="panel" id="bLobby"></div></div>
+      <h2 style="font-size:20px;margin-top:28px">Ostatnie bitwy</h2>
+      <div id="bHist"></div>
+    </section>
+
+    <section id="v-top" hidden>
+      <h2>Topka graczy</h2>
+      <p class="sub">Ranking graczy z tej strony. Boty są oznaczone etykietą BOT i odświeżają się codziennie.</p>
+      <div class="lbsum" id="lbSum"></div>
+      <div class="tools" id="lbTools"></div>
+      <div class="scroll"><table class="lbt" id="lbTable"></table></div>
+      <p class="hint" id="lbNote"></p>
+    </section>
+
+    <section id="v-inv" hidden>
+      <h2>Ekwipunek</h2>
+      <p class="sub">Przedmioty możesz zachować albo sprzedać za wirtualne saldo. Im bardziej zużyta skórka, tym więcej rys i ubytków lakieru.</p>
+      <div class="tools" id="invTools"></div>
+      <div class="cards" id="invGrid"></div>
+    </section>
+
+    <section id="v-exch" hidden>
+      <h2>Zamiana skinów</h2>
+      <p class="sub">Wymieniaj przedmioty z ekwipunku. Upgrader to zamiana na droższy skin z podaną szansą, a kontrakt zamienia 10 przedmiotów na jeden z wyższego poziomu.</p>
+      <div class="tools" id="exTabs"></div>
+      <div id="exBody"></div>
+    </section>
+
+    <section id="v-stats" hidden>
+      <h2>Statystyki</h2>
+      <p class="sub">Podsumowanie twoich otwarć i porównanie z teoretycznymi szansami.</p>
+      <div class="stats" id="statTiles"></div>
+      <h2 style="font-size:20px;margin-top:8px">Rozkład wypadnięć</h2>
+      <div class="scroll"><table id="tierTable"></table></div>
+      <h2 style="font-size:20px;margin-top:28px">Ostatnie 40 otwarć</h2>
+      <div class="hist" id="hist"></div>
+      <div style="margin-top:28px"><button class="btn danger" id="reset" type="button">Zresetuj postęp</button></div>
+    </section>
+  </main>
+
+  <footer>
+    Skrzynkomat to darmowy symulator do zabawy. Nie zawiera prawdziwych pieniędzy ani realnych nagród, a waluta nie ma żadnej wartości poza stroną. Przedmioty i nazwy są wymyślone, projekt nie jest powiązany z żadną grą ani firmą. Zapis postępu zostaje w twojej przeglądarce.
+  </footer>
+</div>
+
+<div id="arena" role="dialog" aria-modal="true" aria-label="Bitwa"><div class="arIn" id="arIn"></div></div>
+
+<div id="stage" role="dialog" aria-modal="true" aria-label="Otwieranie skrzynki">
+  <div id="stageIn">
+    <h3 id="stTitle"></h3>
+    <div class="crateBox" id="crateBox"></div>
+    <div class="rail" id="rail"><div class="needle" id="needle"></div><div class="strip" id="strip"></div></div>
+    <div class="stage-btns" id="stBtns"><button class="btn" id="skip" type="button">Pomiń animację</button></div>
+    <div class="result" id="result">
+      <div class="rays"></div>
+      <div class="tn" id="rT"></div>
+      <div class="big" id="rArt"></div>
+      <div class="rn" id="rN"></div>
+      <div id="rW" style="font:400 13px var(--mono);color:var(--mute)"></div>
+      <div class="btns">
+        <button class="btn main" id="rSell" type="button"></button>
+        <button class="btn" id="rKeep" type="button">Zachowaj</button>
+        <button class="btn" id="rAgain" type="button">Otwórz ponownie</button>
+      </div>
+    </div>
+  </div>
+</div>
+<canvas id="fx"></canvas>
+<div id="flash"></div>
+<div id="contents"><div class="box" id="cBox"></div></div>
+<div id="toast" role="status"></div>
+</div>
+  </body>
+</html>

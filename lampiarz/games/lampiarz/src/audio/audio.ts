@@ -374,6 +374,10 @@ class AudioEngine {
         case 'defeat':
           this.play('defeat');
           break;
+        case 'explode':
+          this.play('fire');
+          this.play('lunge');
+          break;
         default:
           break;
       }

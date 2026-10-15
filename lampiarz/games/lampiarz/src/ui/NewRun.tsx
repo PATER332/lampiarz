@@ -1,9 +1,9 @@
 import { useState } from 'react';
 import { audio } from '../audio/audio';
-import { CLASSES, NIGHTS } from '../game/content';
+import { CLASSES, MASTERY, NIGHTS } from '../game/content';
 import { classUnlocked, type Profile } from '../game/meta';
 import { codeToSeed } from '../game/rng';
-import type { ClassId } from '../game/types';
+import type { ClassId, RunMode } from '../game/types';
 import { ClassPortrait } from './common';
 import { IconArrow, IconDice, IconHeart, IconLock, IconOil } from './icons';
 
@@ -15,17 +15,19 @@ export function NewRun({
 }: {
   profile: Profile;
   hasSaved: boolean;
-  onStart: (cls: ClassId, night: number, seed: number) => void;
+  onStart: (cls: ClassId, night: number, seed: number, mode: RunMode) => void;
   onBack: () => void;
 }) {
   const [cls, setCls] = useState<ClassId>('lampiarz');
   const [night, setNight] = useState(Math.min(profile.nightUnlocked, 1));
   const [seedText, setSeedText] = useState('');
+  const [mode, setMode] = useState<RunMode>('normal');
   const start = () => {
     audio.play('click');
     const seed = seedText.trim() ? codeToSeed(seedText) : (Math.random() * 4294967296) >>> 0;
-    onStart(cls, night, seed);
+    onStart(cls, night, seed, mode);
   };
+  const active = MASTERY.filter((m) => (profile.mastery?.[m.id] ?? 0) > 0);
   return (
     <div className="setup">
       <div className="setup-inner">
@@ -136,6 +138,47 @@ export function NewRun({
               </button>
             </div>
             <div className="night-desc">To samo ziarno = to samo miasto i te same zdarzenia.</div>
+          </div>
+        </div>
+
+        <div className="setup-row">
+          <div className="panel field">
+            <span className="label">Tryb</span>
+            <div className="nights" role="radiogroup" aria-label="Tryb gry">
+              {(
+                [
+                  ['normal', 'Noc', '5 dzielnic i Cypel Latarni z Matką Mroku. Wygrana odblokowuje trudniejsze noce.'],
+                  ['endless', 'Do świtu', 'Dzielnice bez końca, coraz gęstszy mrok, Kominiarz co 5 dzielnic. Liczy się, jak daleko zajdziesz.'],
+                ] as [RunMode, string, string][]
+              ).map(([id, name, desc]) => (
+                <button
+                  key={id}
+                  className={`night-btn mode-btn ${mode === id ? 'on' : ''}`}
+                  role="radio"
+                  aria-checked={mode === id}
+                  title={desc}
+                  onClick={() => {
+                    audio.play('click');
+                    setMode(id);
+                  }}
+                >
+                  {name}
+                </button>
+              ))}
+            </div>
+            <div className="night-desc">
+              {mode === 'normal'
+                ? '5 dzielnic i Cypel Latarni z Matką Mroku.'
+                : `Dzielnice bez końca — mrok gęstnieje z każdą. Twój rekord: ${profile.stats.bestEndless ?? 0} dzielnic.`}
+            </div>
+          </div>
+          <div className="panel field">
+            <span className="label">Księga mistrza</span>
+            <div className="night-desc" style={{ marginTop: 6 }}>
+              {active.length
+                ? active.map((m) => `${m.name}${m.costs.length > 1 ? ` ${profile.mastery[m.id]}` : ''}`).join(' · ')
+                : 'Brak ulepszeń. Popiół z każdej nocy wydasz w Księdze mistrza (menu główne).'}
+            </div>
           </div>
         </div>
 

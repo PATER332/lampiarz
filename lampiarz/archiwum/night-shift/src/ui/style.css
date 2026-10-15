@@ -1,0 +1,843 @@
+@font-face {
+  font-family: 'NS Display';
+  src: url(/fonts/heros-cn-bold.woff) format('woff');
+  font-display: swap;
+}
+@font-face {
+  font-family: 'NS Sans';
+  src: url(/fonts/inter-regular.woff) format('woff');
+  font-weight: 400;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'NS Sans';
+  src: url(/fonts/inter-semibold.woff) format('woff');
+  font-weight: 600;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'NS Mono';
+  src: url(/fonts/unifont.woff) format('woff');
+  font-display: swap;
+}
+
+:root {
+  --bg: #040506;
+  --ink: #cfd8d4;
+  --dim: rgba(207, 216, 212, 0.55);
+  --faint: rgba(207, 216, 212, 0.3);
+  --teal: #7fd1c3;
+  --amber: #e5a74f;
+  --red: #d6372b;
+  --green: #79e08f;
+  --line: rgba(127, 209, 195, 0.28);
+  --panel: rgba(6, 10, 11, 0.94);
+  --display: 'NS Display', 'Arial Narrow', Impact, sans-serif;
+  --sans: 'NS Sans', system-ui, sans-serif;
+  --mono: 'NS Mono', ui-monospace, monospace;
+}
+* {
+  box-sizing: border-box;
+}
+html,
+body {
+  margin: 0;
+  height: 100%;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--sans);
+  overflow: hidden;
+  user-select: none;
+  -webkit-font-smoothing: antialiased;
+}
+#root {
+  position: fixed;
+  inset: 0;
+}
+canvas.ns-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  background: #000;
+}
+.ns-ui {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+.ns-layer {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  pointer-events: auto;
+  background: rgba(2, 3, 4, 0.72);
+  animation: ns-fade 0.25s ease both;
+  overflow-y: auto;
+}
+.ns-layer.ns-clear {
+  background: linear-gradient(90deg, rgba(2, 3, 4, 0.92) 0%, rgba(2, 3, 4, 0.55) 45%, rgba(2, 3, 4, 0) 75%);
+  justify-content: flex-start;
+}
+.ns-layer.ns-black {
+  background: #020203;
+}
+@keyframes ns-fade {
+  from {
+    opacity: 0;
+  }
+}
+
+/* ---------------------------------------------------------------- panels */
+.ns-panel {
+  position: relative;
+  width: min(720px, 100%);
+  max-height: calc(100vh - 40px);
+  overflow-y: auto;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  padding: 26px 28px;
+  box-shadow: 0 30px 90px rgba(0, 0, 0, 0.75);
+}
+.ns-panel.ns-narrow {
+  width: min(460px, 100%);
+}
+.ns-panel.ns-wide {
+  width: min(960px, 100%);
+}
+.ns-panel::before {
+  content: '';
+  position: absolute;
+  left: -1px;
+  top: -1px;
+  width: 40px;
+  height: 3px;
+  background: var(--teal);
+}
+.ns-kicker {
+  font: 13px var(--mono);
+  letter-spacing: 0.1em;
+  color: var(--teal);
+  margin: 0 0 6px;
+  text-transform: uppercase;
+}
+.ns-title {
+  margin: 0 0 16px;
+  font: 400 34px/1 var(--display);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.ns-text {
+  margin: 0 0 12px;
+  line-height: 1.6;
+  font-size: 15px;
+}
+.ns-dim {
+  color: var(--dim);
+}
+.ns-mono {
+  font-family: var(--mono);
+}
+.ns-h3 {
+  margin: 18px 0 8px;
+  font: 13px var(--mono);
+  letter-spacing: 0.12em;
+  color: var(--teal);
+  text-transform: uppercase;
+}
+
+/* ---------------------------------------------------------------- buttons */
+.ns-btns {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 14px;
+}
+.ns-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 14px;
+}
+.ns-btn {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  min-height: 42px;
+  padding: 9px 14px;
+  background: rgba(127, 209, 195, 0.04);
+  border: 1px solid rgba(127, 209, 195, 0.18);
+  color: var(--ink);
+  font: 600 15px var(--sans);
+  letter-spacing: 0.04em;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.12s, color 0.12s;
+  outline: none;
+}
+.ns-btn small {
+  font: 12px var(--mono);
+  color: var(--dim);
+  letter-spacing: 0;
+  font-weight: 400;
+}
+.ns-btn:hover,
+.ns-btn:focus-visible {
+  background: rgba(127, 209, 195, 0.14);
+  border-color: var(--teal);
+  color: #fff;
+}
+.ns-btn[disabled] {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+.ns-btn.ns-primary {
+  border-color: var(--teal);
+  background: rgba(127, 209, 195, 0.12);
+}
+.ns-btn.ns-danger {
+  border-color: rgba(214, 55, 43, 0.6);
+}
+.ns-btn.ns-small {
+  min-height: 32px;
+  padding: 5px 10px;
+  font-size: 13px;
+}
+.ns-row .ns-btn {
+  flex: 1;
+  justify-content: center;
+}
+
+/* ---------------------------------------------------------------- menu */
+.ns-menu {
+  width: min(460px, 100%);
+  margin-left: max(4vw, 10px);
+}
+.ns-logo {
+  margin: 0;
+  font: 400 clamp(56px, 10vw, 110px) / 0.85 var(--display);
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: #e6ece9;
+  text-shadow: 0 0 40px rgba(127, 209, 195, 0.18);
+}
+.ns-logo-time {
+  display: block;
+  margin-top: 4px;
+  font: 400 clamp(38px, 6vw, 64px) / 1 var(--mono);
+  color: var(--red);
+  letter-spacing: 0.08em;
+  animation: ns-blink 3.17s steps(1) infinite;
+}
+@keyframes ns-blink {
+  0%,
+  92% {
+    opacity: 1;
+  }
+  93%,
+  96% {
+    opacity: 0.2;
+  }
+}
+.ns-tag {
+  margin: 14px 0 22px;
+  color: var(--dim);
+  font-size: 15px;
+  line-height: 1.5;
+}
+.ns-foot {
+  margin-top: 20px;
+  font: 12px var(--mono);
+  color: var(--faint);
+}
+.ns-warning {
+  margin: 0 0 12px;
+  padding: 9px 12px;
+  border: 1px solid rgba(214, 55, 43, 0.6);
+  background: rgba(214, 55, 43, 0.12);
+  font-size: 14px;
+}
+
+/* ---------------------------------------------------------------- loading */
+.ns-loading {
+  width: min(520px, 100%);
+}
+.ns-bar {
+  height: 4px;
+  background: rgba(127, 209, 195, 0.12);
+  margin: 18px 0 10px;
+}
+.ns-bar > i {
+  display: block;
+  height: 100%;
+  width: 0;
+  background: var(--teal);
+  transition: width 0.15s;
+}
+
+/* ---------------------------------------------------------------- HUD */
+.ns-hud {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+.ns-objective {
+  position: absolute;
+  left: 22px;
+  top: 18px;
+  max-width: min(460px, 60vw);
+  font-size: 14px;
+  line-height: 1.45;
+  text-shadow: 0 1px 6px #000;
+}
+.ns-objective b {
+  display: block;
+  font: 12px var(--mono);
+  color: var(--teal);
+  letter-spacing: 0.12em;
+  margin-bottom: 3px;
+}
+.ns-objective .ns-sub {
+  color: var(--dim);
+  font-size: 13px;
+  margin-top: 3px;
+}
+.ns-clock {
+  position: absolute;
+  right: 22px;
+  top: 16px;
+  text-align: right;
+  font: 26px var(--mono);
+  color: var(--red);
+  text-shadow: 0 0 12px rgba(214, 55, 43, 0.5);
+}
+.ns-clock small {
+  display: block;
+  font: 12px var(--mono);
+  color: var(--dim);
+  text-shadow: none;
+}
+.ns-status {
+  position: absolute;
+  left: 22px;
+  bottom: 20px;
+  font: 13px var(--mono);
+  color: var(--dim);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.ns-meter {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.ns-meter i {
+  display: block;
+  width: 120px;
+  height: 4px;
+  background: rgba(255, 255, 255, 0.1);
+  position: relative;
+}
+.ns-meter i::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  width: var(--v, 100%);
+  background: var(--c, var(--teal));
+}
+.ns-cross {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 4px;
+  height: 4px;
+  margin: -2px 0 0 -2px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.55);
+}
+.ns-cross.on {
+  width: 8px;
+  height: 8px;
+  margin: -4px 0 0 -4px;
+  background: transparent;
+  border: 1.5px solid var(--teal);
+}
+.ns-prompt {
+  position: absolute;
+  left: 50%;
+  top: calc(50% + 28px);
+  transform: translateX(-50%);
+  font-size: 14px;
+  text-shadow: 0 1px 6px #000;
+  white-space: nowrap;
+}
+.ns-key {
+  display: inline-block;
+  min-width: 22px;
+  padding: 1px 6px;
+  margin-right: 6px;
+  border: 1px solid var(--teal);
+  color: var(--teal);
+  font: 12px var(--mono);
+  text-align: center;
+}
+.ns-subs {
+  position: absolute;
+  left: 50%;
+  bottom: 70px;
+  transform: translateX(-50%);
+  width: min(760px, 90vw);
+  text-align: center;
+  font-size: 17px;
+  line-height: 1.45;
+  text-shadow: 0 2px 8px #000, 0 0 2px #000;
+}
+.ns-subs span {
+  display: inline-block;
+  padding: 4px 10px;
+  background: rgba(0, 0, 0, 0.45);
+}
+.ns-subs em {
+  font: normal 12px var(--mono);
+  letter-spacing: 0.1em;
+  margin-right: 8px;
+}
+.ns-subs em.NADZORCA {
+  color: var(--teal);
+}
+.ns-subs em.RADIO {
+  color: var(--amber);
+}
+.ns-subs em.TY {
+  color: var(--dim);
+}
+.ns-toasts {
+  position: absolute;
+  left: 50%;
+  top: calc(50% + 64px);
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+.ns-toast {
+  padding: 6px 14px;
+  background: rgba(4, 6, 7, 0.85);
+  border-left: 2px solid var(--teal);
+  font-size: 14px;
+  animation: ns-fade 0.2s ease both;
+}
+.ns-toast.deny {
+  border-color: var(--red);
+}
+.ns-toast.good {
+  border-color: var(--green);
+}
+.ns-final {
+  position: absolute;
+  left: 50%;
+  top: 22px;
+  transform: translateX(-50%);
+  width: min(420px, 70vw);
+  text-align: center;
+  font: 13px var(--mono);
+  color: var(--amber);
+}
+.ns-final i {
+  display: block;
+  height: 4px;
+  margin-top: 6px;
+  background: rgba(229, 167, 79, 0.2);
+  position: relative;
+}
+.ns-final i::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  width: var(--v);
+  background: var(--amber);
+}
+.ns-hidden-tag {
+  position: absolute;
+  left: 50%;
+  bottom: 160px;
+  transform: translateX(-50%);
+  font: 13px var(--mono);
+  color: var(--dim);
+  letter-spacing: 0.1em;
+}
+.ns-saved {
+  position: absolute;
+  right: 22px;
+  bottom: 20px;
+  font: 12px var(--mono);
+  color: var(--teal);
+  opacity: 0;
+  transition: opacity 0.4s;
+}
+.ns-saved.on {
+  opacity: 1;
+}
+.ns-locker {
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(0deg, rgba(0, 0, 0, 0.92) 0 26px, rgba(0, 0, 0, 0.15) 26px 40px);
+}
+
+.ns-hud.ns-min .ns-objective,
+.ns-hud.ns-min .ns-clock,
+.ns-hud.ns-min .ns-status,
+.ns-hud.ns-min .ns-cross,
+.ns-hud.ns-min .ns-prompt {
+  display: none;
+}
+
+/* ---------------------------------------------------------------- CCTV */
+.ns-cctv .br {
+  position: absolute;
+  right: 30px;
+  bottom: 26px;
+}
+.ns-cctv-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+  min-width: 230px;
+}
+.ns-cctv {
+  position: absolute;
+  inset: 0;
+  pointer-events: auto;
+  font: 16px var(--mono);
+  color: #d8f0de;
+  text-shadow: 0 0 4px #000;
+}
+.ns-cctv .tl {
+  position: absolute;
+  left: 30px;
+  top: 26px;
+}
+.ns-cctv .tr {
+  position: absolute;
+  right: 30px;
+  top: 26px;
+  text-align: right;
+}
+.ns-cctv .bl {
+  position: absolute;
+  left: 30px;
+  bottom: 26px;
+  line-height: 1.7;
+}
+.ns-cctv .rec::before {
+  content: '';
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--red);
+  margin-right: 8px;
+  animation: ns-blink 1s steps(1) infinite;
+}
+.ns-cctv .dots span {
+  display: inline-block;
+  width: 26px;
+  margin-right: 4px;
+  text-align: center;
+  border: 1px solid rgba(216, 240, 222, 0.4);
+}
+.ns-cctv .dots span.on {
+  background: rgba(216, 240, 222, 0.85);
+  color: #000;
+}
+.ns-cctv .dots span.seen {
+  border-color: var(--green);
+}
+
+/* ---------------------------------------------------------------- terminals, keypad, power */
+.ns-term {
+  background: #031009;
+  border: 1px solid rgba(121, 224, 143, 0.35);
+  color: #a6f0b9;
+  font-family: var(--mono);
+}
+.ns-term .ns-title,
+.ns-term .ns-kicker {
+  color: #c4ffd2;
+  font-family: var(--mono);
+}
+.ns-term .ns-text {
+  font-family: var(--mono);
+  white-space: pre-wrap;
+  font-size: 15px;
+}
+.ns-term .ns-btn {
+  font-family: var(--mono);
+  border-color: rgba(121, 224, 143, 0.35);
+  color: #c4ffd2;
+}
+.ns-keypad {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin-top: 14px;
+}
+.ns-keypad .ns-btn {
+  justify-content: center;
+  font: 22px var(--mono);
+}
+.ns-display {
+  font: 34px var(--mono);
+  letter-spacing: 0.4em;
+  text-align: center;
+  padding: 10px;
+  background: #020604;
+  border: 1px solid rgba(121, 224, 143, 0.35);
+  color: #a6f0b9;
+}
+.ns-display.bad {
+  color: var(--red);
+}
+.ns-cap {
+  display: flex;
+  gap: 4px;
+  margin: 8px 0 14px;
+}
+.ns-cap span {
+  flex: 1;
+  height: 12px;
+  border: 1px solid var(--line);
+}
+.ns-cap span.on {
+  background: var(--teal);
+}
+.ns-circuit {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 10px;
+  align-items: center;
+  padding: 8px 0;
+  border-bottom: 1px solid rgba(127, 209, 195, 0.1);
+}
+.ns-circuit small {
+  display: block;
+  color: var(--dim);
+  font-size: 12px;
+  margin-top: 2px;
+}
+.ns-toggle {
+  min-width: 112px;
+  justify-content: center;
+}
+.ns-toggle.on {
+  border-color: var(--green);
+  color: var(--green);
+}
+
+/* ---------------------------------------------------------------- tablet & docs */
+.ns-tabs {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+}
+.ns-tabs .ns-btn {
+  flex: 1;
+  justify-content: center;
+  min-height: 34px;
+  font-size: 13px;
+}
+.ns-tabs .ns-btn.active {
+  border-color: var(--teal);
+  background: rgba(127, 209, 195, 0.15);
+}
+.ns-goal {
+  padding: 10px 12px;
+  border: 1px solid rgba(127, 209, 195, 0.14);
+  margin-bottom: 8px;
+}
+.ns-goal h4 {
+  margin: 0 0 6px;
+  font: 600 14px var(--sans);
+}
+.ns-goal li {
+  font-size: 13px;
+  color: var(--dim);
+  list-style: none;
+  margin: 3px 0;
+}
+.ns-goal li.done {
+  color: var(--green);
+}
+.ns-goal ul {
+  padding: 0;
+  margin: 0;
+}
+.ns-doclist {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 8px;
+}
+.ns-paper {
+  background: #d9d3c2;
+  color: #1d1b17;
+  border: 0;
+  box-shadow: 0 30px 90px rgba(0, 0, 0, 0.8);
+}
+.ns-paper::before {
+  background: var(--red);
+}
+.ns-paper .ns-kicker {
+  color: #7a2a20;
+}
+.ns-paper .ns-text {
+  font: 16px/1.65 var(--mono);
+  white-space: pre-wrap;
+}
+.ns-paper .ns-btn {
+  color: #1d1b17;
+  border-color: rgba(0, 0, 0, 0.35);
+  background: rgba(0, 0, 0, 0.05);
+}
+.ns-map {
+  width: 100%;
+  background: #030607;
+  border: 1px solid var(--line);
+}
+.ns-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 8px;
+  margin: 14px 0;
+}
+.ns-stats div {
+  border: 1px solid var(--line);
+  padding: 10px;
+  text-align: center;
+}
+.ns-stats b {
+  display: block;
+  font: 26px var(--mono);
+  color: var(--teal);
+}
+.ns-stats span {
+  font-size: 12px;
+  color: var(--dim);
+}
+.ns-setting {
+  display: grid;
+  grid-template-columns: 1fr 200px 52px;
+  gap: 12px;
+  align-items: center;
+  padding: 7px 0;
+  border-bottom: 1px solid rgba(127, 209, 195, 0.08);
+  font-size: 14px;
+}
+.ns-setting output {
+  font: 13px var(--mono);
+  color: var(--dim);
+  text-align: right;
+}
+.ns-check {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 0;
+  font-size: 14px;
+  border-bottom: 1px solid rgba(127, 209, 195, 0.08);
+  cursor: pointer;
+}
+input[type='range'] {
+  width: 100%;
+  accent-color: var(--teal);
+}
+input[type='checkbox'] {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--teal);
+}
+.ns-seg {
+  display: flex;
+  gap: 4px;
+}
+.ns-seg .ns-btn {
+  flex: 1;
+  justify-content: center;
+  min-height: 30px;
+  font-size: 12px;
+  padding: 4px;
+}
+.ns-seg .ns-btn.active {
+  border-color: var(--teal);
+  background: rgba(127, 209, 195, 0.18);
+}
+.ns-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+.ns-table td {
+  padding: 6px 4px;
+  border-bottom: 1px solid rgba(127, 209, 195, 0.08);
+}
+.ns-table td:last-child {
+  text-align: right;
+}
+.ns-death .ns-title {
+  font-size: clamp(48px, 9vw, 96px);
+  color: var(--red);
+}
+.ns-ending .ns-text {
+  font-size: 17px;
+  line-height: 1.75;
+  animation: ns-fade 1.2s ease both;
+}
+.ns-click {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: auto;
+  background: rgba(0, 0, 0, 0.55);
+  cursor: pointer;
+  font: 16px var(--mono);
+  letter-spacing: 0.1em;
+  text-align: center;
+  line-height: 1.8;
+}
+.ns-error {
+  max-width: 560px;
+  margin: 10vh auto;
+  padding: 24px;
+  border: 1px solid var(--red);
+  background: #120606;
+  font: 15px/1.6 var(--sans);
+  color: var(--ink);
+}
+@media (max-width: 640px) {
+  .ns-panel {
+    padding: 18px 16px;
+  }
+  .ns-setting {
+    grid-template-columns: 1fr 110px 44px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ns-layer,
+  .ns-toast,
+  .ns-ending .ns-text {
+    animation: none;
+  }
+  .ns-logo-time {
+    animation: none;
+  }
+}

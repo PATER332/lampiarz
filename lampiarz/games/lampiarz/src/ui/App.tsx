@@ -1,18 +1,19 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { audio } from '../audio/audio';
 import { abandonRun, newRun } from '../game/engine';
-import { checkAchievements, finalizeRun, newProfile, syncDiscoveries, todayKey, type Settings } from '../game/meta';
+import { buyMastery, checkAchievements, finalizeRun, newProfile, syncDiscoveries, todayKey, type Settings } from '../game/meta';
 import { hashString } from '../game/rng';
-import type { ClassId, Run } from '../game/types';
+import type { ClassId, Run, RunMode } from '../game/types';
 import { clearRun, loadProfile, loadRun, resetAll, saveProfile, saveRun } from '../save/storage';
 import { achievementToast, Modal, Toasts, type ToastItem } from './common';
 import { GameScreen } from './GameScreen';
 import { MainMenu } from './MainMenu';
-import { BookModal, HowToModal, SettingsModal } from './MetaModals';
+import { BookModal, HowToModal, MasteryModal, SettingsModal } from './MetaModals';
 import { NewRun } from './NewRun';
+import { newTutorialRun } from '../game/tutorial';
 
-type Screen = 'menu' | 'setup' | 'game';
-type Overlay = null | 'settings' | 'howto' | 'book';
+type Screen = 'menu' | 'setup' | 'game' | 'tutorial';
+type Overlay = null | 'settings' | 'howto' | 'book' | 'mastery';
 
 let toastSeq = 1;
 
@@ -30,6 +31,8 @@ export function App() {
   const [toasts, setToasts] = useState<ToastItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [confirmDaily, setConfirmDaily] = useState(false);
+  const [tutorialRun, setTutorialRun] = useState<Run | null>(null);
+  const [offerTutorial, setOfferTutorial] = useState(false);
   const profile = profileRef.current;
 
   const pushToast = useCallback((t: Omit<ToastItem, 'id'>) => {
@@ -79,6 +82,34 @@ export function App() {
     [persistProfile, pushToast],
   );
 
+  // the tutorial never touches saves, stats or achievements — only the "done" flag
+  const onTutorialChanged = useCallback(
+    (r: Run): string[] => {
+      const p = profileRef.current;
+      if (r.tutorial?.done && !p.tutorialDone) {
+        p.tutorialDone = true;
+        p.tutorialSeen = true;
+        persistProfile();
+      }
+      return [];
+    },
+    [persistProfile],
+  );
+
+  const startTutorial = () => {
+    setOfferTutorial(false);
+    setTutorialRun(newTutorialRun());
+    setOverlay(null);
+    setScreen('tutorial');
+    audio.unlock();
+  };
+
+  const openSetup = () => {
+    const p = profileRef.current;
+    if (!p.tutorialDone && !p.tutorialSeen && p.stats.runs === 0) setOfferTutorial(true);
+    else setScreen('setup');
+  };
+
   const endCurrentRunIfAny = () => {
     if (run && run.phase !== 'victory' && run.phase !== 'defeat') {
       abandonRun(run);
@@ -87,9 +118,9 @@ export function App() {
     clearRun();
   };
 
-  const startRun = (cls: ClassId, night: number, seed: number, daily: string | null) => {
+  const startRun = (cls: ClassId, night: number, seed: number, daily: string | null, mode: RunMode = 'normal') => {
     endCurrentRunIfAny();
-    const r = newRun({ cls, night, seed, daily });
+    const r = newRun({ cls, night, seed, daily, mode, mastery: profileRef.current.mastery });
     saveRun(r);
     setRun(r);
     setScreen('game');
@@ -141,15 +172,17 @@ export function App() {
           savedRun={savedRun}
           dailyScore={profile.daily[today] ?? null}
           onContinue={() => setScreen('game')}
-          onNew={() => setScreen('setup')}
+          onNew={openSetup}
+          onTutorial={startTutorial}
           onDaily={() => (savedRun ? setConfirmDaily(true) : startDaily())}
           onBook={() => setOverlay('book')}
+          onMastery={() => setOverlay('mastery')}
           onHowTo={() => setOverlay('howto')}
           onSettings={() => setOverlay('settings')}
         />
       ) : null}
       {screen === 'setup' ? (
-        <NewRun profile={profile} hasSaved={!!savedRun} onBack={() => setScreen('menu')} onStart={(c, n, s) => startRun(c, n, s, null)} />
+        <NewRun profile={profile} hasSaved={!!savedRun} onBack={() => setScreen('menu')} onStart={(c, n, s, m) => startRun(c, n, s, null, m)} />
       ) : null}
       {screen === 'game' && run ? (
         <GameScreen
@@ -172,11 +205,74 @@ export function App() {
         />
       ) : null}
 
+      {screen === 'tutorial' && tutorialRun ? (
+        <GameScreen
+          run={tutorialRun}
+          profile={profile}
+          onRunChanged={onTutorialChanged}
+          onExitToMenu={() => {
+            setTutorialRun(null);
+            setOverlay(null);
+            setScreen('menu');
+          }}
+          onNewRun={() => {
+            setTutorialRun(null);
+            setScreen('setup');
+          }}
+          onAbandon={() => undefined}
+          onOpenSettings={() => setOverlay('settings')}
+          onOpenHowTo={() => setOverlay('howto')}
+          onToggleMute={toggleMute}
+          overlayOpen={overlay !== null}
+          onTutorialRestart={startTutorial}
+        />
+      ) : null}
+      {offerTutorial ? (
+        <Modal onClose={() => setOfferTutorial(false)} labelledBy="ot-title">
+          <p className="eyebrow">Pierwsza noc</p>
+          <h2 id="ot-title">Zagrać najpierw samouczek?</h2>
+          <p className="muted">
+            Krótka dzielnica (ok. 3 minuty), w której krok po kroku poznasz ruch, światło, olej, znicze, gasiciela i umiejętność. Nic się w niej nie liczy do statystyk — możesz
+            go powtórzyć w każdej chwili z menu.
+          </p>
+          <div className="modal-actions">
+            <button
+              className="btn"
+              onClick={() => {
+                setOfferTutorial(false);
+                profileRef.current.tutorialSeen = false;
+                setScreen('setup');
+              }}
+            >
+              Od razu do gry
+            </button>
+            <button className="btn primary" onClick={startTutorial}>
+              Samouczek
+            </button>
+          </div>
+        </Modal>
+      ) : null}
+
       {overlay === 'settings' ? (
         <SettingsModal settings={profile.settings} onChange={updateSettings} onClose={() => setOverlay(null)} onReset={screen === 'menu' ? resetProgress : undefined} />
       ) : null}
-      {overlay === 'howto' ? <HowToModal onClose={() => setOverlay(null)} /> : null}
+      {overlay === 'howto' ? <HowToModal onClose={() => setOverlay(null)} onTutorial={screen === 'menu' ? startTutorial : undefined} /> : null}
       {overlay === 'book' ? <BookModal profile={profile} onClose={() => setOverlay(null)} /> : null}
+      {overlay === 'mastery' ? (
+        <MasteryModal
+          profile={profile}
+          onClose={() => setOverlay(null)}
+          onBuy={(id) => {
+            const err = buyMastery(profileRef.current, id);
+            if (!err) {
+              audio.play('achievement');
+              for (const a of checkAchievements(profileRef.current, null)) pushToast(achievementToast(a, 0));
+              persistProfile();
+            }
+            return err;
+          }}
+        />
+      ) : null}
       {confirmDaily ? (
         <Modal onClose={() => setConfirmDaily(false)} labelledBy="cd-title">
           <p className="eyebrow">Noc dnia</p>

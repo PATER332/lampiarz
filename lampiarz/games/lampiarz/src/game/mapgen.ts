@@ -2,7 +2,7 @@ import { BALANCE } from './balance';
 import { ENEMIES, THEMES } from './content';
 import { bfs, DIRS4, DIRS8, inBounds, manhattan } from './grid';
 import { Rng } from './rng';
-import type { District, Enemy, EnemyType, Item, Lamp, Point, ThemeId } from './types';
+import type { Barrel, District, Enemy, EnemyType, Item, Lamp, Point, ThemeId, WeatherId } from './types';
 import { TILE_FLOOR, TILE_WALL } from './types';
 
 interface Room {
@@ -241,7 +241,7 @@ function tryGenerate(opts: GenOptions, seed: number): District | null {
     }
   };
   const mods = theme.mods;
-  const oilCount = Math.max(2, rng.int(BALANCE.items.oilMin, BALANCE.items.oilMax) + mods.oilBonus);
+  const oilCount = Math.max(2, rng.int(BALANCE.items.oilMin, BALANCE.items.oilMax) + mods.oilBonus + (final ? BALANCE.boss.extraOilCans : 0));
   placeSpread('oil', oilCount, () => BALANCE.items.oilCan, 5);
   placeSpread('embers', rng.int(BALANCE.items.emberPilesMin, BALANCE.items.emberPilesMax), () => rng.int(BALANCE.items.emberMin, BALANCE.items.emberMax), 4);
   if (!final && (mods.eventGuaranteed || rng.chance(BALANCE.items.eventChance))) {
@@ -262,20 +262,28 @@ function tryGenerate(opts: GenOptions, seed: number): District | null {
   // ---- enemies
   const enemies: Enemy[] = [];
   const nightExtra = opts.night >= 2 ? 1 : 0;
-  const count = Math.max(1, BALANCE.enemies.startBase + opts.depth - 1 + mods.extraEnemies + nightExtra + (final ? -1 : 0));
+  const count = Math.max(1, BALANCE.enemies.startBase + opts.depth - 1 + mods.extraEnemies + nightExtra + (final ? -2 : 0));
   const enemyCands = rng.shuffle(
     floors.filter((p) => !occupied(p) && distStart[p.y * w + p.x] >= 9 && !items.some((it) => it.x === p.x && it.y === p.y)),
   );
+  const gasCap = gasicielCap(opts.depth, opts.theme);
   for (const p of enemyCands) {
     if (enemies.length >= count) break;
     if (enemies.some((e) => manhattan(e, p) < 3)) continue;
-    const type = rollEnemyType(rng, opts.depth, mods.weights);
+    let type = rollEnemyType(rng, opts.depth, mods.weights);
+    if (type === 'gasiciel' && enemies.filter((e) => e.type === 'gasiciel').length >= gasCap) type = 'cien';
     enemies.push(makeEnemy(nextId++, type, p, rng, opts.depth));
   }
   if (final) {
-    const far = floors
-      .filter((p) => !occupied(p) && !enemies.some((e) => e.x === p.x && e.y === p.y))
-      .sort((a, b) => distStart[b.y * w + b.x] - distStart[a.y * w + a.x])[0];
+    // she sleeps beside the lighthouse (2–3 tiles from it), on its far side from the start
+    const lh = lamps.find((l) => l.kind === 'lighthouse')!;
+    const free = floors.filter((p) => !occupied(p) && !enemies.some((e) => e.x === p.x && e.y === p.y));
+    const ring = free.filter((p) => {
+      const dd = Math.abs(p.x - lh.x) + Math.abs(p.y - lh.y);
+      return dd >= 2 && dd <= 3 && !lamps.some((l) => l.kind === 'brazier' && Math.abs(l.x - p.x) + Math.abs(l.y - p.y) <= 3);
+    });
+    const byFar = (a: Point, b: Point) => distStart[b.y * w + b.x] - distStart[a.y * w + a.x];
+    const far = (ring.length ? ring : free).sort(byFar)[0];
     const hp = BALANCE.boss.hp + (opts.night - 1) * BALANCE.boss.hpPerNight + (opts.night >= 5 ? 4 : 0);
     enemies.push({
       id: nextId++,
@@ -286,12 +294,31 @@ function tryGenerate(opts: GenOptions, seed: number): District | null {
       maxHp: hp,
       elite: false,
       pulse: BALANCE.boss.pulseEvery + 2,
+      dormant: true,
       brood: BALANCE.boss.broodEvery,
     });
   }
 
   const deco = Array.from({ length: w * h }, () => rng.int(0, 255));
   const explored = new Array<number>(w * h).fill(0);
+
+  // ---- extras: oil barrels. A separate RNG keeps
+  // the classic layout (lamps, items, enemies) of every seed exactly as before.
+  const xr = new Rng((seed ^ 0x5bd1e995) >>> 0);
+  const barrels: Barrel[] = [];
+  const taken = (p: Point) =>
+    occupied(p) || items.some((it) => it.x === p.x && it.y === p.y) || enemies.some((e) => e.x === p.x && e.y === p.y);
+  if (!final) {
+    const B = BALANCE.barrels;
+    const want = xr.int(B.min, B.max);
+    const cands = xr.shuffle(floors.filter((p) => !taken(p) && distStart[p.y * w + p.x] >= 4 && manhattan(p, gate) > 2));
+    for (const p of cands) {
+      if (barrels.length >= want) break;
+      if (barrels.some((b) => manhattan(b, p) < 6) || lamps.some((l) => manhattan(l, p) < 2)) continue;
+      if (tryBlock(p)) barrels.push({ id: nextId++, x: p.x, y: p.y });
+    }
+    distStart = bfs(w, h, [start], isOpen);
+  }
 
   return {
     depth: opts.depth,
@@ -322,6 +349,8 @@ function tryGenerate(opts: GenOptions, seed: number): District | null {
     killCounter: 0,
     mods: { ...mods, weights: { ...mods.weights } },
     revealed: opts.hasMapRelic,
+    barrels,
+    weather: weatherFor(opts.seed, final),
   };
 }
 
@@ -329,6 +358,12 @@ function minSep(p: Point, pts: Point[]): number {
   let m = Infinity;
   for (const q of pts) m = Math.min(m, manhattan(p, q));
   return m;
+}
+
+/** How many lamp-snuffers may roam a district at the same time. */
+export function gasicielCap(depth: number, theme: ThemeId): number {
+  if (theme === 'latarnia') return BALANCE.gasiciel.maxAlive;
+  return theme === 'fabryka' || depth >= 5 ? BALANCE.gasiciel.maxAliveHeavy : BALANCE.gasiciel.maxAlive;
 }
 
 export function rollEnemyType(rng: Rng, depth: number, extraWeights: Partial<Record<EnemyType, number>>): EnemyType {
@@ -346,4 +381,12 @@ export function makeEnemy(id: number, type: EnemyType, p: Point, rng: Rng, depth
     depth >= BALANCE.enemies.eliteFromDepth && rng.chance(BALANCE.enemies.eliteChancePerDepth * (depth - BALANCE.enemies.eliteFromDepth + 1));
   const hp = def.hp + (elite ? 1 : 0);
   return { id, type, x: p.x, y: p.y, hp, maxHp: hp, elite, aim: null, snuff: 0, snuffTarget: null };
+}
+
+/** Weather of a district — a pure function of its seed, so the path screen can forecast it. */
+export function weatherFor(seed: number, final: boolean): WeatherId {
+  if (final) return 'jasna';
+  const r = new Rng((seed ^ 0x2545f491) >>> 0);
+  const ids: WeatherId[] = ['jasna', 'deszcz', 'mgla', 'pelnia'];
+  return r.weighted(ids.map((id, i) => [id, BALANCE.weather.weights[i]] as [WeatherId, number]));
 }

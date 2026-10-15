@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as
 import { audio } from '../audio/audio';
 import { ENEMIES, EVENT_MAP } from '../game/content';
 import {
+  barrelAt,
   choosePath,
   computeIntents,
   enemyAt,
@@ -18,10 +19,11 @@ import {
 import { bfs, DIRS4 } from '../game/grid';
 import { computeLight } from '../game/light';
 import { unlockedSet, type Profile } from '../game/meta';
-import type { Action, Fx, Point, Run, ThemeId } from '../game/types';
+import { tutorialAdvance, TUTORIAL_STEPS } from '../game/tutorial';
+import type { Action, EnemyType, Fx, Point, Run, ThemeId } from '../game/types';
 import { TILE_WALL } from '../game/types';
 import { Renderer } from '../render/renderer';
-import { anyModalOpen } from './common';
+import { anyModalOpen, Modal } from './common';
 import { Hud, type InspectInfo } from './Hud';
 import { EventModal, PathModal, PauseModal, RunEndModal, SummaryModal, WorkshopModal } from './RunModals';
 
@@ -37,6 +39,8 @@ export interface GameScreenProps {
   onOpenHowTo: () => void;
   onToggleMute: () => void;
   overlayOpen: boolean;
+  /** tutorial only: start the tutorial again */
+  onTutorialRestart?: () => void;
 }
 
 const KEY_DIRS: Record<string, Point> = {
@@ -61,7 +65,8 @@ export function GameScreen(props: GameScreenProps) {
   const [hover, setHover] = useState<Point | null>(null);
   const [endShown, setEndShown] = useState(false);
   const [runAchievements, setRunAchievements] = useState<string[]>([]);
-  const [showTutorial, setShowTutorial] = useState(!profile.tutorialSeen);
+  const [showTutorial, setShowTutorial] = useState(!profile.tutorialSeen && !profile.tutorialDone && !run.tutorial);
+  const [enemyHint, setEnemyHint] = useState<EnemyType | null>(null);
   const lastAction = useRef(0);
   const propsRef = useRef(props);
   propsRef.current = props;
@@ -79,7 +84,7 @@ export function GameScreen(props: GameScreenProps) {
       return;
     }
     rendererRef.current = r;
-    r.settings = { shake: profile.settings.shake, reducedMotion: profile.settings.reducedMotion, showGrid: profile.settings.showGrid };
+    r.settings = rendererSettings(profile, run);
     r.resize();
     r.sync(run);
     let raf = 0;
@@ -100,8 +105,26 @@ export function GameScreen(props: GameScreenProps) {
 
   useEffect(() => {
     const r = rendererRef.current;
-    if (r) r.settings = { shake: profile.settings.shake, reducedMotion: profile.settings.reducedMotion, showGrid: profile.settings.showGrid };
-  }, [profile.settings.shake, profile.settings.reducedMotion, profile.settings.showGrid]);
+    if (r) r.settings = rendererSettings(profile, run);
+  }, [profile.settings.shake, profile.settings.reducedMotion, profile.settings.showGrid, profile.settings.hints, profile.settings.effects, run]);
+
+  // keep the player out from under the objective box / tutorial card
+  useEffect(() => {
+    const r = rendererRef.current;
+    const cv = canvasRef.current;
+    if (!r || !cv) return;
+    const top = cv.getBoundingClientRect().top;
+    // the objective box / tutorial card sit just below the district header, however tall it wraps
+    const head = document.querySelector<HTMLElement>('.hud-top .district');
+    const game = cv.parentElement;
+    if (head && game) game.style.setProperty('--obj-top', `${Math.round(head.getBoundingClientRect().bottom - game.getBoundingClientRect().top + 8)}px`);
+    let inset = 0;
+    for (const el of Array.from(document.querySelectorAll<HTMLElement>('.objective, .tut-card'))) {
+      const b = el.getBoundingClientRect();
+      if (b.width > window.innerWidth * 0.6 || el.classList.contains('objective')) inset = Math.max(inset, b.bottom - top + 6);
+    }
+    r.topInset = inset;
+  });
 
   // a different Run object (new night) — resync
   useEffect(() => {
@@ -123,6 +146,15 @@ export function GameScreen(props: GameScreenProps) {
       const d = cur.district;
       const near = d.enemies.reduce((m, e) => Math.min(m, Math.abs(e.x - cur.player.x) + Math.abs(e.y - cur.player.y)), 99);
       audio.setIntensity(cur.player.hp <= 1 ? 1 : near <= 2 ? 0.8 : near <= 4 ? 0.5 : 0.15);
+      // first time ever meeting an enemy type: a short card explaining it
+      const prof = propsRef.current.profile;
+      if (!cur.tutorial && prof.settings.hints) {
+        const fresh = cur.seenEnemies.find((t) => !prof.hintsSeen.includes(t));
+        if (fresh) {
+          prof.hintsSeen.push(fresh);
+          setEnemyHint(fresh);
+        }
+      }
       const fresh = propsRef.current.onRunChanged(cur);
       if (fresh.length) {
         audio.play('achievement');
@@ -143,6 +175,7 @@ export function GameScreen(props: GameScreenProps) {
       audio.unlock();
       lastAction.current = performance.now();
       const fx = playerAct(cur, a);
+      if (cur.tutorial) fx.push(...tutorialAdvance(cur));
       afterChange(fx);
     },
     [afterChange, paused],
@@ -168,6 +201,11 @@ export function GameScreen(props: GameScreenProps) {
         }
         return;
       }
+      if (enemyHint && (e.code === 'Enter' || e.code === 'Escape')) {
+        e.preventDefault();
+        setEnemyHint(null);
+        return;
+      }
       if (showTutorial && (e.code === 'Enter' || e.code === 'Space')) {
         e.preventDefault();
         dismissTutorial();
@@ -190,7 +228,7 @@ export function GameScreen(props: GameScreenProps) {
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [act, paused, showTutorial]);
+  }, [act, paused, showTutorial, enemyHint]);
 
   const dismissTutorial = () => {
     setShowTutorial(false);
@@ -259,7 +297,28 @@ export function GameScreen(props: GameScreenProps) {
         role="img"
       />
       <div className="vignette" />
-      <Hud run={run} onAction={act} onPause={() => (audio.play('click'), setPaused(true))} muted={profile.settings.muted} onMute={props.onToggleMute} inspect={inspect} />
+      <Hud
+        run={run}
+        onAction={act}
+        onPause={() => (audio.play('click'), setPaused(true))}
+        muted={profile.settings.muted}
+        onMute={props.onToggleMute}
+        inspect={inspect}
+        showHints={profile.settings.hints}
+      />
+
+      {run.tutorial && !run.tutorial.done && run.phase === 'play' ? <TutorialCard run={run} /> : null}
+
+      {enemyHint && run.phase === 'play' ? (
+        <div className="panel enemy-hint" role="dialog" aria-label={`Nowy wróg: ${ENEMIES[enemyHint].name}`}>
+          <div className="sub">Nowy wróg</div>
+          <b>{ENEMIES[enemyHint].name}</b>
+          <div>{ENEMIES[enemyHint].desc}</div>
+          <button className="btn small" onClick={() => setEnemyHint(null)}>
+            Rozumiem
+          </button>
+        </div>
+      ) : null}
 
       {showTutorial && run.phase === 'play' ? (
         <div className="panel tutorial" role="dialog" aria-label="Pierwsze kroki">
@@ -267,18 +326,21 @@ export function GameScreen(props: GameScreenProps) {
           <h2 style={{ margin: 0, color: 'var(--parchment)' }}>Zapal miasto</h2>
           <ol>
             <li>
-              Idź <b>WASD / strzałkami</b> lub klikaj pola. Wejdź w latarnię, by ją zapalić (1 olej).
+              Ruch: <b>WASD / strzałki</b> albo kliknij pole. Gra jest turowa — wrogowie ruszają się dopiero po tobie.
             </li>
             <li>
-              Pola w blasku latarni są <b>bezpieczne</b> — cienie nie mogą tam wejść.
+              Wejdź w latarnię, by ją zapalić (1 olej). W jej <b>blasku cienie nie mogą wejść</b>.
             </li>
             <li>
-              Zapal <b>trzy znicze</b> (po 2 oleju), a brama na drugim końcu dzielnicy się otworzy.
+              Cel: zapal <b>trzy znicze</b> (po 2 oleju) — brama otworzy się na dobre. Ramka „Cel” u góry i strzałki na brzegu ekranu zawsze pokazują, co dalej.
             </li>
             <li>
-              Pilnuj <b>oleju</b> i paska <b>mroku</b> — gdy się zapełni, rodzi się nowy cień.
+              Atakujesz, wchodząc we wroga. <b>Q</b> — umiejętność, <b>F</b> — zgaś latarnię i odzyskaj olej.
             </li>
           </ol>
+          <p className="muted" style={{ margin: '8px 0 0', fontSize: 13 }}>
+            Wolisz spokojnie przećwiczyć? Wyjdź do menu i wybierz „Samouczek”.
+          </p>
           <div className="modal-actions" style={{ marginTop: 14 }}>
             <button className="btn primary" onClick={dismissTutorial}>
               Do roboty
@@ -288,10 +350,26 @@ export function GameScreen(props: GameScreenProps) {
       ) : null}
 
       {run.phase === 'event' ? <EventModal run={run} onChoose={chooseEvent} /> : null}
-      {run.phase === 'summary' ? <SummaryModal run={run} onNext={toWorkshop} /> : null}
+      {run.phase === 'summary' && !run.tutorial ? <SummaryModal run={run} onNext={toWorkshop} /> : null}
+      {run.tutorial && run.tutorial.done ? <TutorialDoneModal onPlay={props.onNewRun} onMenu={props.onExitToMenu} /> : null}
       {run.phase === 'workshop' ? <WorkshopModal run={run} onAct={doWorkshop} /> : null}
       {run.phase === 'path' ? <PathModal run={run} onChoose={pickPath} /> : null}
-      {(run.phase === 'victory' || run.phase === 'defeat') && endShown ? (
+      {run.tutorial && run.phase === 'defeat' && endShown ? (
+        <Modal labelledBy="tut-fail">
+          <p className="eyebrow">Samouczek</p>
+          <h2 id="tut-fail">Latarnia zgasła</h2>
+          <p className="muted">Nic straconego — w samouczku nic się nie liczy. Pamiętaj: stój w blasku latarni i uderzaj pierwszy.</p>
+          <div className="modal-actions">
+            <button className="btn" onClick={props.onExitToMenu}>
+              Menu
+            </button>
+            <button className="btn primary" onClick={props.onTutorialRestart}>
+              Spróbuj jeszcze raz
+            </button>
+          </div>
+        </Modal>
+      ) : null}
+      {!run.tutorial && (run.phase === 'victory' || run.phase === 'defeat') && endShown ? (
         <RunEndModal run={run} newAchievements={runAchievements} onAgain={props.onNewRun} onMenu={props.onExitToMenu} />
       ) : null}
       {paused && run.phase === 'play' && !props.overlayOpen ? (
@@ -323,7 +401,7 @@ function stepTowards(run: Run, target: Point): Point | 'wait' | null {
   if (Math.abs(dx) + Math.abs(dy) === 1) return { x: dx, y: dy };
   if (!d.explored[target.y * d.w + target.x]) {
     // walking into the unknown: step along the dominant axis, falling back to the other one
-    const open = (x: number, y: number) => d.tiles[y * d.w + x] !== TILE_WALL && !lampAt(d, x, y);
+    const open = (x: number, y: number) => d.tiles[y * d.w + x] !== TILE_WALL && !lampAt(d, x, y) && !barrelAt(d, x, y);
     const ax = { x: Math.sign(dx), y: 0 };
     const ay = { x: 0, y: Math.sign(dy) };
     const order = Math.abs(dx) >= Math.abs(dy) ? [ax, ay] : [ay, ax];
@@ -331,7 +409,11 @@ function stepTowards(run: Run, target: Point): Point | 'wait' | null {
     return null;
   }
   const blocked = (x: number, y: number) =>
-    d.tiles[y * d.w + x] === TILE_WALL || !!lampAt(d, x, y) || !!enemyAt(d, x, y) || (x === d.gate.x && y === d.gate.y && !gateOpen(d));
+    d.tiles[y * d.w + x] === TILE_WALL ||
+    !!lampAt(d, x, y) ||
+    !!enemyAt(d, x, y) ||
+    !!barrelAt(d, x, y) ||
+    (x === d.gate.x && y === d.gate.y && !gateOpen(d));
   const goals: Point[] = [];
   if (blocked(target.x, target.y)) {
     for (const dir of DIRS4) {
@@ -379,6 +461,14 @@ function describeTile(run: Run, t: Point): InspectInfo | null {
             ? 'Szarżuje po czerwonej linii!'
             : it?.kind === 'snuff'
               ? 'Gasi płomień obok siebie.'
+              : it?.kind === 'hunt'
+                ? 'Idzie zgasić latarnię (przerywana linia).'
+                : it?.kind === 'soot'
+                    ? it.attack
+                      ? 'Uderzy cię szczotką w tej turze.'
+                      : it.left <= 0
+                        ? 'Ciska sadzą w tej turze!'
+                        : `Sadza za ${it.left} t.${it.lamp ? '' : ' (nie ma w zasięgu płonącej latarni)'}`
               : it?.kind === 'boss'
                 ? it.pulse <= 0
                   ? 'Zaćmienie w następnej turze!'
@@ -402,6 +492,8 @@ function describeTile(run: Run, t: Point): InspectInfo | null {
         : `Zgaszona. Zapalenie kosztuje ${lampCost(run, l)} oleju.`;
     return { sub: l.lit ? 'płonie' : 'zgaszona', title: names[l.kind], text };
   }
+  const b = barrelAt(d, t.x, t.y);
+  if (b) return { sub: 'beczka', title: 'Beczka z olejem', text: 'Wejdź w nią, a wybuchnie: 3 obrażeń wszystkim wrogom w promieniu 1,5 pola i ogień na 4 tury. Ciebie nie rani — zwab cienie i odpal.' };
   const it = itemAt(d, t.x, t.y);
   if (it) {
     const map = {
@@ -422,3 +514,75 @@ function describeTile(run: Run, t: Point): InspectInfo | null {
   return null;
 }
 
+
+function rendererSettings(profile: Profile, run: Run) {
+  return {
+    shake: profile.settings.shake,
+    reducedMotion: profile.settings.reducedMotion,
+    showGrid: profile.settings.showGrid,
+    showObjective: profile.settings.hints || !!run.tutorial,
+    hiFx: profile.settings.effects !== false,
+  };
+}
+
+function TutorialCard({ run }: { run: Run }) {
+  const t = run.tutorial!;
+  const st = TUTORIAL_STEPS[t.step];
+  return (
+    <div className="tut-card" role="status" aria-live="polite" key={t.step}>
+      <div className="tut-head">
+        <span className="tut-step">
+          Samouczek · krok {t.step + 1} z {TUTORIAL_STEPS.length}
+        </span>
+      </div>
+      <h3>{st.title}</h3>
+      <p>{st.text}</p>
+      {st.keys?.length ? (
+        <div className="tut-keys">
+          {st.keys.map((k) => (
+            <span key={k}>{k}</span>
+          ))}
+        </div>
+      ) : null}
+      <div className="tut-progress" aria-hidden>
+        {TUTORIAL_STEPS.map((_, i) => (
+          <i key={i} className={i < t.step ? 'done' : i === t.step ? 'now' : ''} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function TutorialDoneModal({ onPlay, onMenu }: { onPlay: () => void; onMenu: () => void }) {
+  return (
+    <Modal labelledBy="tut-done">
+      <p className="eyebrow">Samouczek ukończony</p>
+      <h2 id="tut-done">Jesteś gotów na prawdziwą noc</h2>
+      <ul className="tut-recap">
+        <li>Noc to 5 dzielnic i Cypel Latarni. W każdej dzielnicy: <b>3 znicze → brama</b>.</li>
+        <li>
+          Pasek <b>Mrok</b> u góry pokazuje, kiedy pojawi się nowy cień. Im dłużej zwlekasz, tym ich więcej — po 160 turach zapada głęboka noc.
+        </li>
+        <li>Między dzielnicami: warsztat (relikty, leczenie, olej za żar) i wybór kolejnej drogi.</li>
+        <li>
+          Nowi wrogowie: <b>Śmigacz</b> (2 pola na turę), <b>Smolnik</b> (kradnie olej), <b>Łowca</b> (szarżuje po czerwonej linii — zejdź z niej).
+        </li>
+        <li>
+          Po drodze: <b>beczki z olejem</b> (pułapka na cienie), <b>pogoda</b> i w 3. dzielnicy{' '}
+          <b>Kominiarz Cieni</b>. Szczegóły w „Jak grać”.
+        </li>
+        <li>
+          Na końcu <b>Matka Mroku</b>: śpi, dopóki nie zapalisz znicza. Zapal 3 znicze i latarnię morską — albo ją pokonaj.
+        </li>
+      </ul>
+      <div className="modal-actions">
+        <button className="btn" onClick={onMenu}>
+          Menu
+        </button>
+        <button className="btn primary" onClick={onPlay}>
+          Zacznij pierwszą noc
+        </button>
+      </div>
+    </Modal>
+  );
+}

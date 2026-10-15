@@ -1,10 +1,12 @@
 // Core data model. Everything here is plain JSON so a run can be saved verbatim.
 
 export type ClassId = 'lampiarz' | 'kowalka' | 'alchemik';
-export type EnemyType = 'cien' | 'smigacz' | 'gasiciel' | 'smolnik' | 'lowca' | 'matka';
+export type EnemyType = 'cien' | 'smigacz' | 'gasiciel' | 'smolnik' | 'lowca' | 'matka' | 'kominiarz';
 export type ThemeId = 'stare' | 'port' | 'cmentarz' | 'fabryka' | 'ogrod' | 'latarnia';
 export type LampKind = 'lamp' | 'brazier' | 'lighthouse';
 export type ItemKind = 'oil' | 'embers' | 'event' | 'shrine';
+export type WeatherId = 'jasna' | 'deszcz' | 'mgla' | 'pelnia';
+export type RunMode = 'normal' | 'endless';
 
 export const TILE_FLOOR = 0;
 export const TILE_WALL = 1;
@@ -31,6 +33,12 @@ export interface Item {
   eventId?: string;
 }
 
+export interface Barrel {
+  id: number;
+  x: number;
+  y: number;
+}
+
 export interface Enemy {
   id: number;
   type: EnemyType;
@@ -47,6 +55,12 @@ export interface Enemy {
   /** Matka Mroku: turns until the eclipse pulse / spawn. */
   pulse?: number;
   brood?: number;
+  /** Matka Mroku: drags herself forward only every other turn. */
+  stride?: number;
+  /** Matka Mroku sleeps until the first brazier on the Cape is lit (or you walk right up to her). */
+  dormant?: boolean;
+  /** Kominiarz: turns until the soot throw */
+  soot?: number;
 }
 
 export interface Burning {
@@ -108,6 +122,14 @@ export interface District {
   killCounter: number;
   mods: DistrictMods;
   revealed: boolean;
+  /** Set once all three braziers burned at the same time: the gate (or the lighthouse) stays unlocked for good. */
+  gateUnlocked?: boolean;
+  /** Hand-made district (tutorial): no Mrok spawns, no lantern burn, no deep night. */
+  scripted?: boolean;
+  barrels?: Barrel[];
+  weather?: WeatherId;
+  /** a mini-boss (Kominiarz) has already come down from the roofs here */
+  bossCalled?: boolean;
 }
 
 export interface PathOption {
@@ -142,6 +164,9 @@ export interface RunStats {
   oilUsed: number;
   flawlessDistricts: number;
   zeroOilFinish: boolean;
+  barrelsBlown?: number;
+  minibossSlain?: number;
+  bestBlast?: number;
 }
 
 export interface Run {
@@ -169,6 +194,19 @@ export interface Run {
   seenEnemies: EnemyType[];
   seenRelics: string[];
   summary: DistrictSummary | null;
+  /** Present only in the interactive tutorial: never saved, never counted in stats. */
+  tutorial?: TutorialState;
+  /** 'endless' = "Do świtu": districts never end, no Cape */
+  mode?: RunMode;
+  /** permanent upgrades applied at the start (copied from the profile) */
+  mastery?: Record<string, number>;
+}
+
+export interface TutorialState {
+  step: number;
+  /** district turn when the current step started */
+  stepTurn: number;
+  done: boolean;
 }
 
 export interface DistrictSummary {
@@ -213,4 +251,5 @@ export type Fx =
   | { k: 'complete' }
   | { k: 'victory' }
   | { k: 'defeat' }
-  | { k: 'shake'; power: number };
+  | { k: 'shake'; power: number }
+  | { k: 'explode'; x: number; y: number };

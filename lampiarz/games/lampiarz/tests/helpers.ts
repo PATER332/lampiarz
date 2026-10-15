@@ -15,6 +15,7 @@ import { computeLight } from '../src/game/light';
 import type { Action, Point, Run } from '../src/game/types';
 import { TILE_WALL } from '../src/game/types';
 import { Rng } from '../src/game/rng';
+import { tutorialTargets } from '../src/game/tutorial';
 
 let waits = 0;
 /** A reasonably smart bot: lights braziers, grabs oil when low, fights adjacent shadows, heads to gate. */
@@ -22,10 +23,21 @@ export function botAction(run: Run, rng: Rng): Action {
   const d = run.district;
   const p = run.player;
   const light = computeLight(run);
+  // a sensible lamplighter does not trade blows with the Mother of Darkness: step away
+  const boss = d.enemies.find((e) => e.type === 'matka');
+  const eclipseSoon = !!boss && (boss.pulse ?? 9) <= 2 && Math.hypot(boss.x - p.x, boss.y - p.y) <= 3.7;
+  if (boss && (eclipseSoon || (Math.abs(boss.x - p.x) + Math.abs(boss.y - p.y) <= 1 && p.hp < 20))) {
+    const away = DIRS4.filter((dir) => {
+      const nx = p.x + dir.x;
+      const ny = p.y + dir.y;
+      return d.tiles[ny * d.w + nx] !== TILE_WALL && !lampAt(d, nx, ny) && !enemyAt(d, nx, ny) && Math.hypot(boss.x - nx, boss.y - ny) > Math.hypot(boss.x - p.x, boss.y - p.y);
+    });
+    if (away.length) return { type: 'move', dx: away[0].x, dy: away[0].y };
+  }
   // fight adjacent enemies
   for (const dir of DIRS4) {
     const e = enemyAt(d, p.x + dir.x, p.y + dir.y);
-    if (e) {
+    if (e && !(e.type === 'matka' && p.hp < 20)) {
       if (p.oil >= 3 && d.enemies.filter((o) => Math.abs(o.x - p.x) + Math.abs(o.y - p.y) <= 2).length >= 2)
         return { type: 'ability' };
       return { type: 'move', dx: dir.x, dy: dir.y };
@@ -34,20 +46,30 @@ export function botAction(run: Run, rng: Rng): Action {
   // rest by a brazier when hurt
   if (p.hp <= Math.ceil(p.maxHp / 2) && inBrazierWarmth(run, light) && !d.enemies.some((e) => Math.abs(e.x - p.x) + Math.abs(e.y - p.y) <= 2))
     return { type: 'wait' };
-  // dodge łowca aim
+  // dodge łowca aim: if we stand on a telegraphed charge line, side-step off it
+  const aimed = new Set<number>();
   for (const e of d.enemies) {
-    if (e.aim) {
-      for (const dir of DIRS4) {
-        if (dir.x === e.aim.x || dir.y === e.aim.y) {
-          const nx = p.x + dir.x;
-          const ny = p.y + dir.y;
-          if (d.tiles[ny * d.w + nx] !== TILE_WALL && !lampAt(d, nx, ny) && !enemyAt(d, nx, ny) && (dir.x !== 0) !== (e.aim.x !== 0))
-            return { type: 'move', dx: dir.x, dy: dir.y };
-        }
-      }
+    if (!e.aim) continue;
+    let x = e.x;
+    let y = e.y;
+    for (let k = 0; k < 4; k++) {
+      x += e.aim.x;
+      y += e.aim.y;
+      if (d.tiles[y * d.w + x] === TILE_WALL || lampAt(d, x, y)) break;
+      aimed.add(y * d.w + x);
     }
   }
+  if (aimed.has(p.y * d.w + p.x)) {
+    for (const dir of DIRS4) {
+      const nx = p.x + dir.x;
+      const ny = p.y + dir.y;
+      if (d.tiles[ny * d.w + nx] !== TILE_WALL && !lampAt(d, nx, ny) && !enemyAt(d, nx, ny) && !aimed.has(ny * d.w + nx))
+        return { type: 'move', dx: dir.x, dy: dir.y };
+    }
+  }
+  let avoidBoss = true;
   const passable = (x: number, y: number) =>
+    !(avoidBoss && boss && !boss.dormant && Math.abs(boss.x - x) + Math.abs(boss.y - y) <= 1) &&
     d.tiles[y * d.w + x] !== TILE_WALL && !lampAt(d, x, y) && !(x === d.gate.x && y === d.gate.y && !gateOpen(d));
   const targets: Point[] = [];
   const unlitB = d.lamps.filter((l) => l.kind === 'brazier' && !l.lit);
@@ -65,7 +87,7 @@ export function botAction(run: Run, rng: Rng): Action {
   }
   if (!targets.length) {
     if (unlitB.length && p.oil >= 2) targets.push(...unlitB);
-    else if (lighthouse && gateOpen(d) && p.oil >= 3) targets.push(lighthouse);
+    else if (lighthouse && gateOpen(d) && p.oil >= 1) targets.push(lighthouse);
     else if (!lighthouse && gateOpen(d)) targets.push(d.gate);
     else {
       const cheap = d.lamps.filter((l) => l.kind === 'lamp' && !l.lit);
@@ -97,7 +119,12 @@ export function botAction(run: Run, rng: Rng): Action {
     if (passable(t.x, t.y)) srcs.push(t);
     else for (const dir of DIRS4) if (passable(t.x + dir.x, t.y + dir.y)) srcs.push({ x: t.x + dir.x, y: t.y + dir.y });
   }
-  const map = bfs(d.w, d.h, srcs, passable);
+  let map = bfs(d.w, d.h, srcs, passable);
+  if (map[p.y * d.w + p.x] < 0 && boss) {
+    // no way around the Mother: accept walking past her
+    avoidBoss = false;
+    map = bfs(d.w, d.h, srcs, passable);
+  }
   let best: Point | null = null;
   let bv = map[p.y * d.w + p.x];
   for (const dir of DIRS4) {
@@ -157,4 +184,30 @@ export function playRun(run: Run, botSeed: number, unlocked = new Set<string>(),
     else botMeta(run, rng, unlocked);
   }
   return steps;
+}
+
+/** Follows the tutorial instructions: walk to the highlighted target and bump into it; use Q on step 8. */
+export function tutorialBotAction(run: Run): Action {
+  const d = run.district;
+  const p = run.player;
+  const step = run.tutorial!.step;
+  const tg = tutorialTargets(run);
+  if (step === 7 && d.enemies.some((e) => Math.abs(e.x - p.x) + Math.abs(e.y - p.y) <= 2) && p.oil >= 2) return { type: 'ability' };
+  if (!tg.length || step === 2) return { type: 'wait' };
+  const t = tg[0];
+  if (Math.abs(t.x - p.x) + Math.abs(t.y - p.y) === 1) return { type: 'move', dx: t.x - p.x, dy: t.y - p.y };
+  const pass = (x: number, y: number) =>
+    d.tiles[y * d.w + x] !== TILE_WALL && !lampAt(d, x, y) && !(x === d.gate.x && y === d.gate.y && !gateOpen(d));
+  const srcs = pass(t.x, t.y) ? [t] : DIRS4.map((q) => ({ x: t.x + q.x, y: t.y + q.y })).filter((q) => pass(q.x, q.y));
+  const m = bfs(d.w, d.h, srcs, pass);
+  let best: Point | null = null;
+  let bv = m[p.y * d.w + p.x];
+  for (const q of DIRS4) {
+    const v = m[(p.y + q.y) * d.w + p.x + q.x];
+    if (v >= 0 && (bv < 0 || v < bv)) {
+      bv = v;
+      best = q;
+    }
+  }
+  return best ? { type: 'move', dx: best.x, dy: best.y } : { type: 'wait' };
 }
