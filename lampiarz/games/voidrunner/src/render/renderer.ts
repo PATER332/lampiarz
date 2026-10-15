@@ -9,6 +9,7 @@ import { T_EMPTY, T_HAZARD } from '../world/tiles';
 import { background } from './background';
 import { glow, line, makeCanvas, px, rect, rgba, type Ctx } from './pixel';
 import { renderRoom, type Anim, type RoomArt } from './roomArt';
+import { WeatherFX } from './weather';
 import { drawBoss, drawDoor, drawEnemy, drawMarker, drawObject, drawPickup, drawPlayer, drawProjectile, drawProp, drawSlash, drawTrap } from './sprites';
 
 /** Draws a sprite with a 1-pixel dark outline so characters read clearly against any wall. */
@@ -21,7 +22,9 @@ class Outliner {
     [this.cv, this.c] = makeCanvas(size, size);
     [this.sil, this.sc] = makeCanvas(size, size);
   }
-  draw(target: Ctx, cx: number, cy: number, color: string, fn: (c: Ctx) => void, flash = 0) {
+  private rimCv: HTMLCanvasElement | null = null;
+  private rc: Ctx | null = null;
+  draw(target: Ctx, cx: number, cy: number, color: string, fn: (c: Ctx) => void, flash = 0, rim?: string) {
     const s = this.size;
     const bx = Math.round(cx - s / 2);
     const by = Math.round(cy - s / 2);
@@ -38,6 +41,21 @@ class Outliner {
     this.sc.globalCompositeOperation = 'source-in';
     this.sc.fillStyle = color;
     this.sc.fillRect(0, 0, s, s);
+    if (rim) {
+      // a second, coloured rim outside the dark outline: the hero reads against any background
+      if (!this.rimCv) [this.rimCv, this.rc] = makeCanvas(s, s);
+      const rc = this.rc!;
+      rc.globalCompositeOperation = 'source-over';
+      rc.clearRect(0, 0, s, s);
+      rc.drawImage(this.cv, 0, 0);
+      rc.globalCompositeOperation = 'source-in';
+      rc.fillStyle = rim;
+      rc.fillRect(0, 0, s, s);
+      const a0 = target.globalAlpha;
+      target.globalAlpha = a0 * 0.4;
+      for (const [ox, oy] of [[-2, 0], [2, 0], [0, -2], [0, 2], [-1, -1], [1, -1], [-1, 1], [1, 1]]) target.drawImage(this.rimCv!, bx + ox, by + oy);
+      target.globalAlpha = a0;
+    }
     for (const [ox, oy] of [[-1, 0], [1, 0], [0, -1], [0, 1]]) target.drawImage(this.sil, bx + ox, by + oy);
     target.drawImage(this.cv, bx, by);
     if (flash > 0) {
@@ -80,6 +98,7 @@ export class Renderer {
   bloomOn = true;
   /** ambient motes drifting in screen space (dust, spores, embers, energy, void wisps) */
   private motes: { x: number; y: number; z: number; ph: number }[] = [];
+  private weather = new WeatherFX();
 
   constructor(canvas: HTMLCanvasElement, overlay: HTMLCanvasElement) {
     this.canvas = canvas;
@@ -173,6 +192,7 @@ export class Renderer {
       const ly = Math.round(VIEW_H - L.cv.height + 40 + (roomH - VIEW_H - cy) * L.factor * 0.6);
       for (let x = off - L.cv.width; x < VIEW_W; x += L.cv.width) c.drawImage(L.cv, Math.round(x), ly);
     }
+    this.weather.drawSky(c, g, cx);
     // haze between background and room: pushes the backdrop back so the playable tiles stand out
     c.fillStyle = 'rgba(2,3,10,0.38)';
     c.fillRect(0, 0, VIEW_W, VIEW_H);
@@ -186,6 +206,7 @@ export class Renderer {
       if (a.x < cx - 40 || a.x > cx + VIEW_W + 40 || a.y > cy + VIEW_H + 10 || a.y + a.h < cy - 10) continue;
       drawAnim(c, a, t);
     }
+    this.weather.drawBack(c, g, cx, cy, dt, t);
     c.drawImage(art.front, 0, 0);
 
     // ---- animated hazard tiles
@@ -193,6 +214,7 @@ export class Renderer {
       if (h.x + TILE < cx || h.x > cx + VIEW_W) continue;
       hazardTile(c, h.x, h.y, area, t);
     }
+    this.weather.drawFront(c, g, cx, cy, dt, t);
 
     // ---- lasers (security + boss)
     for (const hz of g.hazards) drawHazard(c, hz, t, roomW);
@@ -292,7 +314,22 @@ export class Renderer {
       }
       c.restore();
     }
-    this.outline.draw(c, p.x + p.w / 2, p.y + p.h / 2 - 4, '#020308', (cc) => drawPlayer(cc, p, g.cosmetic, g.weapon, t, chargeK), p.hurtT > 0.12 ? 0.8 : 0);
+    // a pool of the suit's light on the ground under the hero
+    if (!p.dead) {
+      const gy = groundBelow(g, p.x + p.w / 2, p.y + p.h);
+      if (gy !== null && gy - (p.y + p.h) < 40) {
+        c.save();
+        c.globalCompositeOperation = 'lighter';
+        c.globalAlpha = 1 - (gy - (p.y + p.h)) / 40;
+        const gg = c.createRadialGradient(p.x + p.w / 2, gy, 0, p.x + p.w / 2, gy, 22);
+        gg.addColorStop(0, rgba(col, 0.35));
+        gg.addColorStop(1, rgba(col, 0));
+        c.fillStyle = gg;
+        c.fillRect(p.x + p.w / 2 - 22, gy - 6, 44, 8);
+        c.restore();
+      }
+    }
+    this.outline.draw(c, p.x + p.w / 2, p.y + p.h / 2 - 4, '#020308', (cc) => drawPlayer(cc, p, g.cosmetic, g.weapon, t, chargeK), p.hurtT > 0.12 ? 0.8 : 0, col);
 
     // ---- projectiles & effects
     c.save();
@@ -351,6 +388,9 @@ export class Renderer {
 
     // ---- bloom: a blurred copy of the brightest parts added back on top
     if (this.bloomOn) this.bloom(c);
+
+    // ---- weather colour grade, fog banks, lightning flash
+    this.weather.drawScreen(c, g, t);
 
     // ---- foreground silhouettes, moving faster than the room
     if (this.bloomOn) {
@@ -513,7 +553,8 @@ export class Renderer {
     const pal = AREAS[g.run.area].palette;
     lc.globalCompositeOperation = 'source-over';
     lc.clearRect(0, 0, VIEW_W, VIEW_H);
-    lc.fillStyle = `rgba(2,3,10,${1 - pal.ambient})`;
+    const amb = Math.min(1, pal.ambient - (g.weather === 'storm' ? 0.06 : 0) + g.lightning * 0.5);
+    lc.fillStyle = `rgba(2,3,10,${1 - amb})`;
     lc.fillRect(0, 0, VIEW_W, VIEW_H);
     lc.globalCompositeOperation = 'destination-out';
     const hole = (x: number, y: number, r: number, a: number) => {
@@ -528,6 +569,7 @@ export class Renderer {
     };
     const p = g.player;
     hole(p.x + p.w / 2, p.y + p.h / 2, 92, 0.85);
+    hole(p.x + p.w / 2, p.y + p.h / 2 - 4, 30, 1); // the hero is always fully lit
     for (const L of art.lights) {
       const f = L.flicker ? (Math.sin(t * 13 + L.x) > 1 - L.flicker * 2 ? 0.55 : 1) : 1;
       hole(L.x, L.y, L.r, Math.min(1, L.a * 1.6) * f);

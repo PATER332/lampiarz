@@ -31,12 +31,25 @@ export type Sfx =
   | 'uiBack'
   | 'lightning'
   | 'explosion'
-  | 'terminal';
+  | 'terminal'
+  | 'thunder';
 
 export interface AudioSettings {
   master: number;
   music: number;
   sfx: number;
+  /** weather and room ambience (rain, wind, hum…) */
+  ambient?: number;
+}
+
+type Weather = 'clear' | 'rain' | 'storm' | 'fog' | 'snow' | 'ash' | 'voidstorm';
+
+/** A continuous ambience layer: looping noise through a filter into a gain, optionally wobbled by an LFO. */
+interface Layer {
+  src: AudioBufferSourceNode;
+  filter: BiquadFilterNode;
+  gain: GainNode;
+  lfo?: OscillatorNode;
 }
 
 export class AudioEngine {
@@ -49,7 +62,12 @@ export class AudioEngine {
   private musicArea = -1;
   private musicStep = 0;
   private droneNodes: AudioNode[] = [];
-  private settings: AudioSettings = { master: 0.8, music: 0.5, sfx: 0.8 };
+  private settings: AudioSettings = { master: 0.8, music: 0.5, sfx: 0.8, ambient: 0.8 };
+  private ambBus!: GainNode;
+  private layers = new Map<string, Layer>();
+  private ambTimer: number | null = null;
+  private amb: { area: number; weather: Weather } | null = null;
+  private hum: OscillatorNode[] = [];
   private lastPlay = new Map<Sfx, number>();
 
   /** Must be called from a user gesture (browser autoplay rules). */
@@ -67,16 +85,19 @@ export class AudioEngine {
     const comp = this.ctx.createDynamicsCompressor();
     comp.threshold.value = -14;
     comp.ratio.value = 4;
+    this.ambBus = this.ctx.createGain();
     this.sfxBus.connect(this.master);
     this.musicBus.connect(this.master);
+    this.ambBus.connect(this.master);
     this.master.connect(comp);
     comp.connect(this.ctx.destination);
-    const len = this.ctx.sampleRate;
+    const len = this.ctx.sampleRate * 2;
     this.noiseBuf = this.ctx.createBuffer(1, len, this.ctx.sampleRate);
     const d = this.noiseBuf.getChannelData(0);
     for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
     this.apply(this.settings);
     if (this.musicArea >= 0) this.startMusic(this.musicArea, true);
+    if (this.amb) this.setAmbience(this.amb.area, this.amb.weather, true);
   }
 
   apply(s: AudioSettings) {
@@ -86,6 +107,149 @@ export class AudioEngine {
     this.master.gain.setTargetAtTime(s.master, t, 0.05);
     this.sfxBus.gain.setTargetAtTime(s.sfx, t, 0.05);
     this.musicBus.gain.setTargetAtTime(s.music * 0.55, t, 0.2);
+    this.ambBus.gain.setTargetAtTime(s.ambient ?? 0.8, t, 0.2);
+  }
+
+  // ------------------------------------------------------------- ambience
+  private layer(id: string, type: BiquadFilterType, freq: number, q: number, lfoRate = 0, lfoDepth = 0): Layer {
+    let L = this.layers.get(id);
+    if (L) return L;
+    const c = this.ctx!;
+    const src = c.createBufferSource();
+    src.buffer = this.noiseBuf;
+    src.loop = true;
+    src.playbackRate.value = 0.9 + Math.random() * 0.2;
+    const filter = c.createBiquadFilter();
+    filter.type = type;
+    filter.frequency.value = freq;
+    filter.Q.value = q;
+    const gain = c.createGain();
+    gain.gain.value = 0;
+    src.connect(filter);
+    filter.connect(gain);
+    gain.connect(this.ambBus);
+    src.start(0, Math.random() * 1.5);
+    L = { src, filter, gain };
+    if (lfoRate > 0) {
+      // slow swells (wind gusts, rain intensity)
+      const lfo = c.createOscillator();
+      const lg = c.createGain();
+      lfo.frequency.value = lfoRate;
+      lg.gain.value = lfoDepth;
+      lfo.connect(lg);
+      lg.connect(filter.frequency);
+      lfo.start();
+      L.lfo = lfo;
+    }
+    this.layers.set(id, L);
+    return L;
+  }
+
+  /** Crossfades the ambience to a sector + weather. Safe to call before the audio is unlocked. */
+  setAmbience(area: number, weather: Weather, force = false) {
+    if (!force && this.amb && this.amb.area === area && this.amb.weather === weather) return;
+    this.amb = { area, weather };
+    if (!this.ctx) return;
+    const t = this.ctx.currentTime;
+    const want: Record<string, number> = {};
+    // weather layers
+    if (weather === 'rain') Object.assign(want, { rainHi: 0.09, rainLo: 0.06 });
+    if (weather === 'storm') Object.assign(want, { rainHi: 0.13, rainLo: 0.11, wind: 0.11 });
+    if (weather === 'fog') Object.assign(want, { windLow: 0.07 });
+    if (weather === 'snow') Object.assign(want, { windHi: 0.06, windLow: 0.03 });
+    if (weather === 'ash') Object.assign(want, { fire: 0.05, windLow: 0.04 });
+    if (weather === 'voidstorm') Object.assign(want, { voidWind: 0.08, windLow: 0.05 });
+    // room tone of the sector
+    want.room = [0.05, 0.03, 0.04, 0.06, 0.03][area] ?? 0.04;
+    const defs: Record<string, [BiquadFilterType, number, number, number?, number?]> = {
+      rainHi: ['bandpass', 2600, 0.6, 0.13, 500],
+      rainLo: ['lowpass', 700, 0.5],
+      wind: ['bandpass', 420, 1.4, 0.09, 260],
+      windLow: ['lowpass', 260, 0.8, 0.05, 90],
+      windHi: ['bandpass', 1100, 2.2, 0.07, 500],
+      fire: ['bandpass', 1800, 0.8],
+      voidWind: ['bandpass', 600, 6, 0.05, 400],
+      room: ['lowpass', area === 3 ? 160 : area === 2 ? 320 : 220, 1],
+    };
+    for (const id of Object.keys(defs)) {
+      const v = want[id] ?? 0;
+      if (!v && !this.layers.has(id)) continue;
+      const [ty, f, q, lr, ld] = defs[id];
+      const L = this.layer(id, ty, f, q, lr ?? 0, ld ?? 0);
+      if (id === 'room') L.filter.frequency.setTargetAtTime(f, t, 0.5);
+      L.gain.gain.setTargetAtTime(v, t, 0.8);
+    }
+    // a low machine hum under everything (the reactor in the core is the loudest)
+    for (const o of this.hum) {
+      try {
+        o.stop(t + 1.5);
+      } catch {
+        /* stopped */
+      }
+    }
+    this.hum = [];
+    const hz = [50, 0, 60, 45, 0][area] ?? 0;
+    if (hz) {
+      const c = this.ctx;
+      for (const m of [1, 2.01]) {
+        const o = c.createOscillator();
+        const g = c.createGain();
+        o.type = 'sine';
+        o.frequency.value = hz * m;
+        g.gain.setValueAtTime(0, t);
+        g.gain.linearRampToValueAtTime((area === 3 ? 0.035 : 0.018) / m, t + 2);
+        o.connect(g);
+        g.connect(this.ambBus);
+        o.start();
+        this.hum.push(o);
+      }
+    }
+    // random one-shot details: droplets, drips on metal, distant creaks, fire crackle, chimes
+    if (this.ambTimer !== null) window.clearInterval(this.ambTimer);
+    this.ambTimer = window.setInterval(() => this.ambEvent(), 90);
+  }
+
+  private ambEvent() {
+    if (!this.ctx || this.ctx.state !== 'running' || !this.amb) return;
+    const { area, weather } = this.amb;
+    const r = Math.random();
+    const bus = this.ambBus;
+    const ping = (f: number, vol: number, dur: number) => this.osc('sine', f, f * 0.6, dur, vol, Math.random() * 0.08, bus);
+    if (weather === 'rain' || weather === 'storm') {
+      // individual drops hitting puddles and metal
+      if (r < (weather === 'storm' ? 0.9 : 0.7)) ping(1800 + Math.random() * 2600, 0.012 + Math.random() * 0.012, 0.05);
+      if (r < 0.12) ping(600 + Math.random() * 500, 0.02, 0.18); // heavy drip on a pipe
+    }
+    if (weather === 'snow' && r < 0.06) ping(2600 + Math.random() * 1600, 0.01, 0.6); // ice crystals
+    if (weather === 'ash' && r < 0.35) this.osc('square', 3000 + Math.random() * 3000, 800, 0.015, 0.02, 0, bus); // crackle
+    if (weather === 'voidstorm' && r < 0.03) {
+      const f = 110 + Math.random() * 80;
+      this.osc('sine', f, f * 1.5, 1.6, 0.04, 0, bus);
+      this.osc('sine', f * 1.5, f * 1.01, 1.6, 0.03, 0.2, bus);
+    }
+    if (weather === 'fog' && r < 0.02) this.osc('sine', 90 + Math.random() * 40, 60, 1.5, 0.04, 0, bus); // distant groan
+    // sector details
+    if (area === 1 && r > 0.93) ping(900 + Math.random() * 700, 0.02, 0.12); // bubbling tanks / drips
+    if (area === 0 && r > 0.985) this.osc('triangle', 140 + Math.random() * 60, 80, 0.8, 0.025, 0, bus); // metal creak
+    if (area === 2 && r > 0.99) this.osc('square', 120, 118, 0.25, 0.012, 0, bus); // electric buzz of a sign
+    if (area === 3 && r > 0.96) this.osc('sawtooth', 2400 + Math.random() * 1200, 1800, 0.04, 0.008, 0, bus); // arcing
+  }
+
+  stopAmbience() {
+    if (this.ambTimer !== null) window.clearInterval(this.ambTimer);
+    this.ambTimer = null;
+    if (!this.ctx) return;
+    const t = this.ctx.currentTime;
+    for (const L of this.layers.values()) L.gain.gain.setTargetAtTime(0, t, 0.4);
+    for (const o of this.hum) {
+      try {
+        o.stop(t + 1);
+      } catch {
+        /* stopped */
+      }
+    }
+    this.hum = [];
+    this.amb = null;
   }
 
   private osc(type: OscillatorType, f0: number, f1: number, dur: number, vol: number, when = 0, bus?: AudioNode) {
@@ -248,6 +412,15 @@ export class AudioEngine {
         this.noise(0.6, 0.25, 'lowpass', 1800, 60);
         this.osc('sine', 90, 30, 0.6, 0.2);
         break;
+      case 'thunder': {
+        // crack first, then a long rolling rumble (delayed like real distance)
+        const d = 0.15 + Math.random() * 0.9;
+        this.noise(0.25, 0.22, 'highpass', 3000, 800, d);
+        this.noise(2.8, 0.32, 'lowpass', 900, 50, d + 0.05, 0.8);
+        this.noise(2.2, 0.2, 'lowpass', 300, 40, d + 0.4, 0.7);
+        this.osc('sine', 55, 28, 2.4, 0.16, d + 0.1);
+        break;
+      }
       case 'terminal':
         [0, 1, 2, 3].forEach((i) => this.osc('square', r(1500, 2500), r(1500, 2500), 0.03, 0.025, i * 0.05));
         break;
@@ -322,5 +495,5 @@ export class AudioEngine {
 }
 
 /** Silent stand-in for tests (no Web Audio in Node). */
-export const silentAudio = { play: (_: Sfx) => {}, startMusic: (_: number) => {}, stopMusic: () => {} };
-export type AudioLike = Pick<AudioEngine, 'play' | 'startMusic' | 'stopMusic'>;
+export const silentAudio = { play: (_: Sfx) => {}, startMusic: (_: number) => {}, stopMusic: () => {}, setAmbience: (_a: number, _w: Weather) => {}, stopAmbience: () => {} };
+export type AudioLike = Pick<AudioEngine, 'play' | 'startMusic' | 'stopMusic' | 'setAmbience' | 'stopAmbience'>;

@@ -6,6 +6,7 @@ import { Game } from '../src/game/game';
 import { spawnBoss } from '../src/game/bosses';
 import { UPGRADES } from '../src/game/data';
 import { makeGame, run } from './helpers';
+import { silentAudio } from '../src/core/audio';
 
 const clearRoom = (g: ReturnType<typeof makeGame>['g']) => {
   g.enemies = [];
@@ -294,7 +295,7 @@ test('checkpoint snapshot and continue restore the expedition', () => {
   g.player.hp = 40;
   const snap = g.snapshot();
   assert.equal(snap.area, 2);
-  const g2 = new Game(meta, { play() {}, startMusic() {}, stopMusic() {} } as never, input);
+  const g2 = new Game(meta, silentAudio as never, input);
   g2.continueRun(snap);
   assert.equal(g2.run.area, 2);
   assert.equal(g2.room.template, g.plansFor(2)[0].template, 'same room layout from the seed');

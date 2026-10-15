@@ -39,6 +39,16 @@ Na ekranach dotykowych pojawiają się przyciski (można je też włączyć/wył
 - **Przeszkody**: piły jeżdżące po szynach w podłodze, wysuwane kolce, miotacze ognia w ścianach, spadające
   stalaktyty i gruz (odrastają), ruchome platformy nad przepaściami. Każda przeszkoda najpierw ostrzega;
   piły i wysunięte kolce można przeskoczyć „pogo” (cięcie w dół). Przeszkody ranią też wrogów.
+- **Pogoda** (losowana dla każdego pomieszczenia, zależna od sektora): deszcz przeciekający przez strop
+  (krople rozbijają się o podłogi i kładki, kałuże), burza (ulewa, błyskawice, grzmoty, wiatr spychający
+  w powietrzu), mgła (wrogowie widzą cię z bliższej odległości), śnieg chłodziwa (osiada na krawędziach,
+  sople; śliska podłoga), popiół i iskry, Burza Pustki (fioletowe wyładowania). Bossowie mają stałą pogodę.
+- **Dźwięk otoczenia** (Web Audio, generowany): szum deszczu i pojedyncze krople, grzmot z opóźnieniem,
+  porywy wiatru, trzask iskier, kryształki lodu, zawodzenie Pustki, buczenie maszyn sektora; osobny suwak
+  „Otoczenie i pogoda” w Ustawieniach.
+- **Postać**: nowy, większy i bardziej szczegółowy sprite (hełm z wizjerem i grzebieniem, antena, rdzeń
+  energii, naramienniki, nakolanniki, świecące podeszwy, plecak z kontrolkami), kolorowa obwódka, zawsze
+  oświetlona, z poświatą na podłodze.
 - **Czytelność**: jaśniejsze krawędzie i obrys wszystkiego, po czym można chodzić, przyciemnione tło,
   minimapa pomieszczenia z wrogami, przeszkodami i wyjściem, strzałka do otwartego wyjścia poza ekranem.
 - **Elementy otoczenia**: skrzynie do rozbicia (Fragmenty, czasem zdrowie), wybuchowe beczki (ranią też gracza),

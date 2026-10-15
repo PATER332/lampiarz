@@ -415,3 +415,65 @@ test('pogo works on saws (bounce instead of damage)', () => {
   assert.ok(minVy < -250, 'bounced off the saw');
   assert.equal(p.hp, hp0, 'no damage');
 });
+
+test('weather: deterministic per room, every kind appears, bosses get their own', async () => {
+  const { pickWeather } = await import('../src/game/weather');
+  assert.equal(pickWeather(5, 2, 3, null), pickWeather(5, 2, 3, null));
+  const seen = new Set<string>();
+  for (let s = 1; s < 300; s++) for (let a = 0; a < 5; a++) for (let r = 1; r < 5; r++) seen.add(pickWeather(s, a, r, null));
+  for (const k of ['clear', 'rain', 'storm', 'fog', 'snow', 'ash', 'voidstorm']) assert.ok(seen.has(k), `${k} appears`);
+  assert.equal(pickWeather(1, 1, 5, 'matka'), 'storm');
+  assert.equal(pickWeather(1, 3, 5, 'straznik'), 'snow');
+  assert.equal(pickWeather(1, 4, 5, 'serce'), 'voidstorm');
+  assert.equal(pickWeather(1, 0, 0, null, true), 'rain', 'the tutorial starts in the rain');
+  const { g } = makeGame(30);
+  assert.ok(['clear', 'rain', 'storm', 'fog', 'snow', 'ash', 'voidstorm'].includes(g.weather), 'room has a weather');
+  assert.ok(g.weatherName().length > 2);
+});
+
+test('weather: storm wind pushes you in the air and lightning strikes', () => {
+  const { g, input } = makeGame(31);
+  box(g);
+  const p = g.player;
+  g.weather = 'storm';
+  run(g, 12);
+  assert.ok(Math.abs(g.wind) > 10, `wind blows (${g.wind.toFixed(1)})`);
+  // jump straight up: the gust moves you sideways
+  const x0 = p.x;
+  const dir = Math.sign(g.wind);
+  input.press('jump');
+  run(g, 0.5);
+  input.release('jump');
+  assert.ok((p.x - x0) * dir > 3, `drifted with the wind (${(p.x - x0).toFixed(1)})`);
+  let flashed = false;
+  run(g, 12, () => {
+    if (g.lightning > 0.9) flashed = true;
+  });
+  assert.ok(flashed, 'lightning struck at least once in 12 s');
+});
+
+test('weather: coolant snow makes the floor slippery, fog shortens enemy sight', () => {
+  const stopDistance = (weather: 'clear' | 'snow') => {
+    const { g, input } = makeGame(32);
+    box(g);
+    g.weather = weather;
+    const p = g.player;
+    input.press('right');
+    run(g, 0.6);
+    input.release('right');
+    const x0 = p.x;
+    run(g, 1);
+    return p.x - x0;
+  };
+  const dry = stopDistance('clear');
+  const icy = stopDistance('snow');
+  assert.ok(icy > dry * 2, `slides further on snow (${dry.toFixed(1)} vs ${icy.toFixed(1)})`);
+  const { g } = makeGame(33);
+  const { floor } = box(g);
+  const e = makeEnemy(g, 'hunter', g.player.x + 150, floor - 20, false);
+  g.enemies.push(e);
+  g.weather = 'clear';
+  assert.equal(g.sees(e, 180), true, 'sees the player at 150 px in clear air');
+  g.weather = 'fog';
+  assert.equal(g.sees(e, 180), false, 'but not in the fog');
+});

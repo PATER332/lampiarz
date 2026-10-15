@@ -193,10 +193,24 @@ export function renderRoom(grid: RoomGrid, area: number, seed: number, skip: Set
       if (t(x, y) !== T_EMPTY) continue;
       const floor = solid(x, y + 1) && t(x, y + 1) !== T_BREAK;
       const ceil = solid(x, y - 1);
-      if (floor && t(x, y - 1) === T_EMPTY && r() < 0.16) floorProp(bc, x * TILE, (y + 1) * TILE, area, r, lights);
-      if (ceil && r() < 0.14) ceilingProp(bc, x * TILE, y * TILE, area, r, lights);
-      if (!floor && !ceil && (solid(x - 1, y) || solid(x + 1, y)) && r() < 0.05) wallProp(bc, x * TILE, y * TILE, area, solid(x - 1, y) ? -1 : 1, r, lights);
+      if (floor && t(x, y - 1) === T_EMPTY && r() < 0.24) floorProp(bc, x * TILE, (y + 1) * TILE, area, r, lights);
+      if (ceil && r() < 0.2) ceilingProp(bc, x * TILE, y * TILE, area, r, lights);
+      if (!floor && !ceil && (solid(x - 1, y) || solid(x + 1, y)) && r() < 0.09) wallProp(bc, x * TILE, y * TILE, area, solid(x - 1, y) ? -1 : 1, r, lights);
     }
+
+  // ---------------------------------------------------------------- small clutter on almost every floor tile
+  for (let y = 1; y < grid.h - 1; y++)
+    for (let x = 1; x < grid.w - 1; x++) {
+      if (t(x, y) !== T_EMPTY || !solid(x, y + 1)) continue;
+      if (r() < 0.55) clutter(c, x * TILE, (y + 1) * TILE, area, r);
+    }
+  // ---------------------------------------------------------------- posters, panels and pipes with valves on the back wall
+  for (let i = 0; i < grid.w / 5; i++) {
+    const x = 1 + Math.floor(r() * (grid.w - 3));
+    const y = 1 + Math.floor(r() * (grid.h - 4));
+    if (t(x, y) !== T_EMPTY || t(x + 1, y) !== T_EMPTY || t(x, y + 1) !== T_EMPTY) continue;
+    wallDetail(bc, x * TILE + Math.floor(r() * 6), y * TILE + Math.floor(r() * 6), area, r);
+  }
 
   // a soft colour wash so tiles near the floor pick up the ambient tint
   const g = c.createLinearGradient(0, 0, 0, H);
@@ -361,6 +375,14 @@ function solidTile(c: Ctx, tx: number, ty: number, X: number, Y: number, area: n
       line(c, cx, Y, cx + 1, Y - 3 - r() * 4, rgba(pal.accent, 0.7));
     }
   }
+  // weathering: grime streaks running down from the edge, scratches, bolts
+  if (top && r() < 0.5) {
+    const sx = X + 2 + Math.floor(r() * 12);
+    const len = 3 + Math.floor(r() * 9);
+    const stain = area === 1 ? '#1f3a2c' : area === 2 ? '#2a1e2e' : area === 4 ? '#2a1438' : '#3a2a22';
+    for (let k = 0; k < len; k++) px(c, sx, Y + 3 + k, rgba(stain, 0.6 - k / (len * 2)));
+  }
+  if (r() < 0.2) line(c, X + r() * 14, Y + 5 + r() * 9, X + r() * 14, Y + 5 + r() * 9, rgba('#ffffff', 0.08));
   if (bottom) {
     rect(c, X, Y + TILE - 2, TILE, 2, shade(base, -20));
     if (area === 1 && r() < 0.3) for (let k = 0; k < 3; k++) rect(c, X + r() * 15, Y + TILE, 1, 2 + r() * 5, '#2d6a3a');
@@ -725,5 +747,138 @@ function setPiece(c: Ctx, X: number, Y: number, area: number, r: () => number, l
     }
     anims.push({ kind: 'wisp', x: fx, y: fy + 12, h: 30, color: pal.accent, ph: r() * 10 });
     lights.push({ x: fx, y: fy - 6, r: 30, color: pal.accent, flicker: 0.3, a: 0.4 });
+  }
+}
+
+// ------------------------------------------------------------------ clutter (1-6 px items on the floor)
+function clutter(c: Ctx, X: number, Y: number, area: number, r: () => number) {
+  const k = r();
+  const x = X + Math.floor(r() * 12);
+  if (area === 0 || area === 3) {
+    if (k < 0.25) {
+      // bolts and screws
+      px(c, x, Y - 1, '#8a93ad');
+      px(c, x + 3, Y - 1, '#5a6480');
+    } else if (k < 0.45) {
+      // a dropped panel
+      rect(c, x, Y - 2, 5, 2, '#2c3448');
+      rect(c, x, Y - 2, 5, 1, '#4a5470');
+    } else if (k < 0.6) {
+      // cable stub
+      line(c, x, Y - 1, x + 5, Y - 2, area === 3 ? '#b07a3a' : '#3a4256');
+      px(c, x + 5, Y - 3, '#ffcf8a');
+    } else if (k < 0.72) {
+      // traffic cone
+      rect(c, x + 1, Y - 5, 2, 4, '#ff7a2a');
+      rect(c, x, Y - 1, 4, 1, '#ff7a2a');
+      px(c, x + 1, Y - 3, '#ffffff');
+    } else if (k < 0.82) {
+      // toolbox
+      rect(c, x, Y - 3, 6, 3, '#7a2a2a');
+      rect(c, x + 2, Y - 4, 2, 1, '#3a3a3a');
+    } else {
+      // oil stain
+      rect(c, x - 2, Y - 1, 8, 1, 'rgba(10,10,14,0.6)');
+    }
+  } else if (area === 1) {
+    if (k < 0.35) {
+      // grass-like growth
+      for (let i = 0; i < 4; i++) line(c, x + i * 2, Y, x + i * 2 + (r() - 0.5) * 2, Y - 2 - r() * 4, i % 2 ? '#2d6a3a' : '#3f8f4a');
+    } else if (k < 0.55) {
+      // glowing mushroom
+      rect(c, x + 1, Y - 3, 1, 3, '#3a5a48');
+      rect(c, x, Y - 4, 3, 1, '#7dff4a');
+      px(c, x + 1, Y - 5, '#d8ffe6');
+    } else if (k < 0.7) {
+      // bones
+      line(c, x, Y - 1, x + 5, Y - 2, '#c8c0a8');
+      px(c, x, Y - 2, '#e8e0c8');
+      px(c, x + 5, Y - 3, '#e8e0c8');
+    } else if (k < 0.82) {
+      // egg sac
+      rect(c, x, Y - 4, 4, 4, '#4a2a3a');
+      px(c, x + 1, Y - 3, '#d23a6a');
+    } else {
+      rect(c, x - 2, Y - 1, 9, 1, 'rgba(125,255,74,0.25)'); // slime
+    }
+  } else if (area === 2) {
+    if (k < 0.25) {
+      // paper and litter
+      rect(c, x, Y - 1, 3, 1, '#c8c0b0');
+      px(c, x + 4, Y - 1, '#6a5a7a');
+    } else if (k < 0.45) {
+      // can
+      rect(c, x, Y - 3, 2, 3, '#ff3d6e');
+      px(c, x, Y - 3, '#ffffff');
+    } else if (k < 0.6) {
+      // trash bag
+      rect(c, x, Y - 5, 6, 5, '#14121a');
+      rect(c, x + 1, Y - 6, 3, 1, '#14121a');
+      px(c, x + 1, Y - 4, '#3a3048');
+    } else if (k < 0.72) {
+      // bottle
+      rect(c, x, Y - 4, 2, 4, '#2a6a4a');
+      px(c, x, Y - 5, '#2a6a4a');
+      px(c, x, Y - 3, '#8affc0');
+    } else {
+      rect(c, x - 3, Y - 1, 10, 1, 'rgba(255,61,110,0.18)'); // neon reflection
+    }
+  } else {
+    if (k < 0.4) {
+      // small void crystal
+      c.fillStyle = r() < 0.5 ? '#c45cff' : '#6a2a8a';
+      c.beginPath();
+      c.moveTo(x, Y);
+      c.lineTo(x + 1, Y - 3 - r() * 4);
+      c.lineTo(x + 3, Y);
+      c.fill();
+    } else if (k < 0.6) {
+      // rune etched into the floor
+      px(c, x, Y - 1, '#e04aff');
+      px(c, x + 2, Y - 1, '#e04aff');
+      px(c, x + 1, Y - 2, '#e04aff');
+    } else if (k < 0.75) {
+      // pebbles
+      px(c, x, Y - 1, '#3a2a4a');
+      rect(c, x + 2, Y - 2, 2, 2, '#2a1a35');
+    } else {
+      line(c, x, Y - 1, x + 6, Y - 1, '#1a0c24');
+    }
+  }
+}
+
+// ------------------------------------------------------------------ back wall details (posters, panels, valves)
+function wallDetail(c: Ctx, X: number, Y: number, area: number, r: () => number) {
+  const pal = AREAS[area].palette;
+  const k = r();
+  if (area === 2 && k < 0.5) {
+    // poster with a faded picture and lines of text
+    const col = ['#ff3d6e', '#3ee6ff', '#ffd23e', '#8a5cff'][Math.floor(r() * 4)];
+    rect(c, X, Y, 10, 14, rgba('#c8c0b0', 0.35));
+    rect(c, X + 1, Y + 1, 8, 6, rgba(col, 0.45));
+    for (let i = 0; i < 3; i++) rect(c, X + 1, Y + 9 + i * 2, 4 + Math.floor(r() * 4), 1, rgba('#1a1220', 0.6));
+    if (r() < 0.5) line(c, X + 10, Y, X + 7, Y + 4, rgba('#000000', 0.3)); // torn corner
+  } else if (k < 0.35) {
+    // valve wheel on a pipe stub
+    rect(c, X + 4, Y, 2, 14, '#2a3247');
+    c.strokeStyle = area === 1 ? '#3f6a4a' : '#a83a3a';
+    c.lineWidth = 1;
+    c.beginPath();
+    c.arc(X + 5, Y + 6, 4, 0, Math.PI * 2);
+    c.stroke();
+    px(c, X + 5, Y + 6, '#c8d2e6');
+  } else if (k < 0.65) {
+    // electrical panel with a gauge and a warning sticker
+    rect(c, X, Y, 10, 12, '#1c2130');
+    rect(c, X, Y, 10, 1, '#3a4256');
+    rect(c, X + 2, Y + 2, 4, 3, '#0a0c12');
+    line(c, X + 3, Y + 4, X + 5, Y + 2, pal.accent);
+    for (let i = 0; i < 3; i++) px(c, X + 7, Y + 2 + i * 2, i === 0 ? '#5dff9b' : '#ff4a5a');
+    for (let i = 0; i < 4; i++) rect(c, X + 1 + i * 2, Y + 9, 1, 2, i % 2 ? '#1a1a1a' : '#d9b03a');
+  } else {
+    // vent grille with grime
+    rect(c, X, Y, 12, 8, '#161a26');
+    for (let i = 0; i < 4; i++) rect(c, X + 1, Y + 1 + i * 2, 10, 1, '#2a3040');
+    for (let i = 0; i < 6; i++) px(c, X + 2 + Math.floor(r() * 8), Y + 8 + Math.floor(r() * 3), rgba('#000000', 0.4));
   }
 }

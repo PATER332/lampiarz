@@ -194,7 +194,7 @@ button { font: inherit; color: inherit; }
 }
 
 /* combo counter (right edge, under the sector info) */
-.combo { position: absolute; right: 14px; top: 78px; text-align: right; opacity: 0; transform: translateX(8px); transition: opacity 0.2s, transform 0.2s; pointer-events: none; --combo-col: #3ee6ff; }
+.combo { position: absolute; right: 14px; top: 100px; text-align: right; opacity: 0; transform: translateX(8px); transition: opacity 0.2s, transform 0.2s; pointer-events: none; --combo-col: #3ee6ff; }
 .combo.on { opacity: 1; transform: none; }
 .combo b { display: block; font-family: 'Heros Cn', 'Arial Narrow', sans-serif; font-size: 30px; line-height: 1; color: var(--combo-col); text-shadow: 0 0 12px var(--combo-col), 0 2px 0 #000; letter-spacing: 1px; }
 .combo span { display: block; font-size: 10px; letter-spacing: 3px; color: rgba(255, 255, 255, 0.7); margin-top: 2px; }
@@ -209,3 +209,5 @@ button { font: inherit; color: inherit; }
 .minimap .mm-info { font-size: 11px; letter-spacing: 0.06em; color: #ff8a8a; background: rgba(5, 6, 13, 0.72); padding: 2px 6px; }
 .minimap .mm-info.open { color: #5dff9b; }
 @media (max-width: 760px) { .minimap canvas { display: none; } }
+
+.area-sub.weather { color: #9fd8ff; margin-top: 2px; }

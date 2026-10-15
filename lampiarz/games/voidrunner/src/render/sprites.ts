@@ -96,96 +96,177 @@ export function drawPlayer(c: Ctx, p: Player, cos: CosmeticId, weapon: WeaponId,
   if (a === 'special') armAng = weapon === 'heavy' ? 1.4 : -0.1;
 
   const y0 = bob + squash;
-  // ---- scarf (flows behind, gives the silhouette its shape)
+  // palette: five tones of armour lit from the upper left, plus the suit's energy colour
+  const A0 = shade(C.armor, -48); // deep shadow
+  const A1 = shade(C.armor, -22); // shadow
+  const A2 = shade(C.armor, 8); // base
+  const A3 = shade(C.armor, 40); // lit
+  const A4 = shade(C.armorHi, 20); // highlight
+  const SUIT = '#141824'; // under-suit
+  const SUIT2 = '#222838';
+  const G = C.glow;
+  const L = lean;
+
+  // ---- scarf: two pixels thick, long, flowing behind (the silhouette's signature)
   const sway = Math.sin(t * 6) * 1.5;
-  const trail = Math.min(6, Math.abs(p.vx) / 30 + (a === 'dash' ? 4 : 0));
-  for (let i = 0; i < 6 + trail; i++) {
-    const sx = -3 - i;
-    const sy = -18 + y0 + Math.round(Math.sin(t * 8 - i * 0.7) * (0.5 + i * 0.12) + (i > 3 ? sway * 0.3 : 0)) + (p.vy < -50 ? Math.round(i * 0.3) : p.vy > 60 ? -Math.round(i * 0.3) : 0);
-    px(c, sx, sy, i < 2 ? C.glow : shade(C.glow, -40 - i * 8));
-    if (i < 4) px(c, sx, sy + 1, shade(C.glow, -70));
+  const trail = Math.min(7, Math.abs(p.vx) / 28 + (a === 'dash' ? 5 : 0));
+  const lift = p.vy < -50 ? 0.35 : p.vy > 60 ? -0.35 : a === 'wall' ? -0.6 : 0;
+  for (let i = 0; i < 8 + trail; i++) {
+    const sx = -4 - i + L;
+    const sy = -20 + y0 + Math.round(Math.sin(t * 8 - i * 0.7) * (0.5 + i * 0.14) + (i > 3 ? sway * 0.35 : 0) + i * lift);
+    const col = i < 2 ? G : shade(G, -30 - i * 7);
+    px(c, sx, sy, col);
+    px(c, sx, sy + 1, shade(col, -45));
+    if (i > 4 && i % 3 === 0) px(c, sx, sy + 2, shade(col, -70));
   }
 
-  // ---- legs
-  const legCol = shade(C.armor, -10);
+  // ---- legs (thigh, knee guard, shin, boot with a glowing sole)
   const drawLeg = (dx: number, swing: number, back: boolean) => {
-    const col = back ? shade(legCol, -14) : legCol;
+    const k = back ? -16 : 0;
     if (tuck) {
-      rect(c, dx - 1, -9 + y0, 3, 4, col);
-      rect(c, dx + 1, -6 + y0, 3, 3, col);
+      rect(c, dx - 1, -11 + y0, 4, 5, shade(A1, k));
+      rect(c, dx - 1, -11 + y0, 4, 1, shade(A3, k));
+      rect(c, dx + 2, -8 + y0, 4, 3, shade(A2, k)); // knee forward
+      px(c, dx + 4, -8 + y0, shade(A4, k));
+      rect(c, dx + 1, -5 + y0, 5, 2, shade(A1, k)); // boot tucked
+      rect(c, dx + 1, -3 + y0, 5, 1, rgba(G, back ? 0.4 : 0.8));
       return;
     }
     const off = Math.round(swing * 3);
-    const lift = swing > 0.3 ? 1 : 0;
-    rect(c, dx - 1, -9 + y0, 3, 4, col); // thigh
-    rect(c, dx - 1 + Math.round(off * 0.5), -5 + y0 - lift, 3, 4, col); // shin
-    rect(c, dx - 1 + off, -2 - lift - legLift, 4, 2, shade(col, -20)); // boot
-    px(c, dx + 2 + off, -1 - lift - legLift, rgba(C.glow, 0.7));
-    px(c, dx + Math.round(off * 0.5), -5 + y0 - lift, C.armorHi); // knee pad
+    const lf = swing > 0.3 ? 1 : 0;
+    // thigh
+    rect(c, dx - 1, -11 + y0, 4, 5, shade(A1, k));
+    rect(c, dx - 1, -11 + y0, 1, 5, shade(A3, k));
+    rect(c, dx, -11 + y0, 3, 2, shade(A2, k)); // thigh plate
+    rect(c, dx, -11 + y0, 3, 1, shade(A4, k));
+    // knee guard
+    const kx = dx + Math.round(off * 0.5);
+    rect(c, kx - 1, -7 + y0 - lf, 4, 2, shade(A3, k));
+    px(c, kx + 1, -7 + y0 - lf, shade(A4, k));
+    // shin
+    rect(c, kx - 1, -5 + y0 - lf, 4, 3, shade(A2, k));
+    rect(c, kx - 1, -5 + y0 - lf, 1, 3, shade(A3, k));
+    rect(c, kx + 2, -5 + y0 - lf, 1, 3, shade(A1, k));
+    px(c, kx + 2, -4 + y0 - lf, rgba(G, back ? 0.35 : 0.75)); // shin light
+    // boot
+    rect(c, dx - 1 + off, -2 - lf - legLift, 5, 2, shade(A1, k));
+    rect(c, dx - 1 + off, -2 - lf - legLift, 5, 1, shade(A3, k));
+    rect(c, dx + 3 + off, -2 - lf - legLift, 1, 1, shade(A3, k)); // toe cap
+    rect(c, dx - 1 + off, -lf - legLift, 5, 1, rgba(G, back ? 0.35 : 0.85)); // sole
   };
   drawLeg(-2, -legA, true);
-  // ---- back arm
-  rect(c, -5 + lean, -16 + y0, 2, 6, shade(C.armor, -24));
-  // ---- backpack thruster
-  rect(c, -7 + lean, -17 + y0, 3, 7, '#1c2130');
-  rect(c, -7 + lean, -17 + y0, 3, 1, shade(C.armor, 10));
-  px(c, -6 + lean, -11 + y0, C.glow);
-  if (a === 'jump' || a === 'dash' || p.airJumps < 1) px(c, -6 + lean, -10 + y0, '#ffffff');
+
+  // ---- back arm (behind the body)
+  rect(c, -6 + L, -17 + y0, 2, 4, A0);
+  rect(c, -6 + L, -13 + y0, 2, 3, shade(A1, -8));
+  px(c, -6 + L, -10 + y0, rgba(G, 0.4));
+
+  // ---- backpack: two thruster pods with status lights
+  rect(c, -9 + L, -20 + y0, 4, 10, '#171b27');
+  rect(c, -9 + L, -20 + y0, 4, 1, A2);
+  rect(c, -9 + L, -19 + y0, 1, 8, A1);
+  rect(c, -8 + L, -17 + y0, 2, 1, Math.floor(t * 3) % 2 ? G : shade(G, -60));
+  rect(c, -8 + L, -15 + y0, 2, 1, p.airJumps > 0 ? G : '#ff4a5a'); // double jump ready
+  rect(c, -9 + L, -11 + y0, 4, 1, '#0a0c12'); // nozzle
+  px(c, -8 + L, -10 + y0, a === 'jump' || a === 'dash' ? '#ffffff' : shade(G, -40));
   // thruster flame while dashing or rising fast
   if (a === 'dash' || (a === 'jump' && p.vy < -200)) {
-    const fl = 2 + Math.floor((t * 40) % 3);
-    rect(c, -7 + lean - fl, -12 + y0, fl, 2, rgba(C.glow, 0.8));
-    px(c, -7 + lean - fl - 1, -11 + y0, rgba('#ffffff', 0.6));
-    px(c, -7 + lean, -12 + y0, '#ffffff');
+    const fl = 3 + Math.floor((t * 40) % 3);
+    rect(c, -9 + L - fl, -13 + y0, fl, 3, rgba(G, 0.75));
+    rect(c, -9 + L - fl + 1, -12 + y0, fl - 1, 1, '#ffffff');
+    px(c, -10 + L - fl, -12 + y0, rgba('#ffffff', 0.5));
   }
   if (a === 'wall') {
-    // hand on the wall and sparks under the boot
-    line(c, -4, -15 + y0, -8, -17 + y0, shade(C.armor, -20));
-    rect(c, -9, -18 + y0, 2, 2, C.armorHi);
-    if (Math.floor(t * 24) % 3 === 0) px(c, -8, -1, '#ffcf8a');
+    // hand on the wall, sparks under the boot
+    line(c, -4, -16 + y0, -9, -18 + y0, A1);
+    rect(c, -10, -19 + y0, 2, 3, A3);
+    if (Math.floor(t * 24) % 3 === 0) px(c, -9, -1, '#ffcf8a');
   }
-  // ---- torso: lit from the upper left
-  rect(c, -4 + lean, -17 + y0, 8, 9, C.armor);
-  rect(c, -4 + lean, -17 + y0, 8, 1, C.armorHi);
-  rect(c, -4 + lean, -16 + y0, 2, 5, shade(C.armor, 18));
-  rect(c, 2 + lean, -16 + y0, 2, 6, shade(C.armor, -22));
-  rect(c, -1 + lean, -12 + y0, 4, 1, shade(C.armor, -14)); // abdominal plate seam
-  rect(c, -4 + lean, -10 + y0, 8, 2, '#1c2130'); // belt
-  px(c, 0 + lean, -10 + y0, C.glow); // buckle light
-  // energy line and core
-  rect(c, -2 + lean, -14 + y0, 1, 3, rgba(C.glow, 0.85));
-  rect(c, 1 + lean, -15 + y0, 2, 2, C.glow);
-  px(c, 1 + lean, -15 + y0, '#ffffff');
+
+  // ---- torso
+  rect(c, -5 + L, -20 + y0, 10, 10, A2);
+  rect(c, -5 + L, -20 + y0, 10, 1, A4); // collar highlight
+  rect(c, -5 + L, -19 + y0, 2, 7, A3); // lit side
+  rect(c, 3 + L, -19 + y0, 2, 8, A1); // shadow side
+  rect(c, 4 + L, -18 + y0, 1, 6, A0);
+  // chest plate edges and abdominal plates
+  rect(c, -3 + L, -16 + y0, 6, 1, A1);
+  rect(c, -2 + L, -14 + y0, 5, 1, shade(A1, -10));
+  rect(c, -2 + L, -12 + y0, 5, 1, shade(A1, -10));
+  px(c, -4 + L, -18 + y0, '#ffffff');
+  // the energy core: the brightest point on the body
+  rect(c, 0 + L, -19 + y0, 3, 3, SUIT);
+  rect(c, 1 + L, -18 + y0, 1, 1, '#ffffff');
+  px(c, 0 + L, -18 + y0, G);
+  px(c, 2 + L, -18 + y0, G);
+  px(c, 1 + L, -19 + y0, G);
+  px(c, 1 + L, -17 + y0, G);
+  // energy lines running down the suit
+  rect(c, -3 + L, -15 + y0, 1, 4, rgba(G, 0.8));
+  rect(c, 3 + L, -15 + y0, 1, 3, rgba(G, 0.45));
+  // belt with pouches and a buckle light
+  rect(c, -5 + L, -11 + y0, 10, 2, SUIT);
+  rect(c, -5 + L, -11 + y0, 10, 1, SUIT2);
+  rect(c, -4 + L, -11 + y0, 2, 2, A1);
+  rect(c, 2 + L, -11 + y0, 2, 2, A1);
+  px(c, 0 + L, -10 + y0, G);
   drawLeg(1, legA, false);
-  // ---- head / helmet with a crest and a wrap-around visor
-  rect(c, -3 + lean, -23 + y0, 7, 6, shade(C.armor, 8));
-  rect(c, -3 + lean, -23 + y0, 7, 1, C.armorHi);
-  rect(c, -3 + lean, -22 + y0, 1, 4, shade(C.armor, 22));
-  rect(c, -4 + lean, -21 + y0, 1, 3, shade(C.armor, -12));
-  rect(c, -2 + lean, -25 + y0, 3, 2, shade(C.armorHi, -10)); // crest
-  px(c, -2 + lean, -25 + y0, C.glow);
-  rect(c, 0 + lean, -21 + y0, 4, 2, C.visor); // visor
-  px(c, -1 + lean, -21 + y0, shade(C.visor, -60));
-  px(c, 3 + lean, -21 + y0, '#ffffff');
-  // a scan-line glint runs across the visor every few seconds
-  rect(c, 0 + lean, -20 + y0, 4, 1, shade(C.visor, -35));
+
+  // ---- helmet: big visor, crest fin, cheek vent, chin guard
+  const hy = -28 + y0;
+  rect(c, -4 + L, hy + 1, 9, 7, A2);
+  rect(c, -3 + L, hy, 7, 1, A4);
+  rect(c, -4 + L, hy + 1, 1, 6, A3);
+  rect(c, -3 + L, hy + 1, 2, 2, A4); // dome highlight
+  px(c, -2 + L, hy + 1, '#ffffff');
+  rect(c, 4 + L, hy + 2, 1, 5, A1);
+  rect(c, -4 + L, hy + 6, 9, 2, A1); // jaw
+  rect(c, -1 + L, hy + 7, 5, 1, A0); // chin guard
+  // crest fin sweeping back
+  rect(c, -3 + L, hy - 2, 4, 2, A3);
+  rect(c, -5 + L, hy - 1, 2, 2, A2);
+  px(c, -1 + L, hy - 2, G);
+  px(c, -5 + L, hy - 1, shade(G, -30));
+  // cheek vent
+  rect(c, -3 + L, hy + 4, 2, 1, A0);
+  rect(c, -3 + L, hy + 5, 2, 1, A0);
+  // visor: wide, glowing, with an eye line and a glint
+  rect(c, 0 + L, hy + 2, 5, 3, shade(C.visor, -70));
+  rect(c, 0 + L, hy + 3, 5, 1, C.visor);
+  rect(c, 2 + L, hy + 3, 3, 1, '#ffffff');
+  px(c, 0 + L, hy + 2, shade(C.visor, -30));
   const gl = (t * 1.7) % 4;
-  if (gl < 0.5) px(c, Math.round(gl * 8) + lean, -21 + y0, '#ffffff');
-  rect(c, -2 + lean, -18 + y0, 5, 1, shade(C.armor, -18)); // jaw guard
-  // ---- shoulder pad
-  rect(c, -5 + lean, -18 + y0, 4, 3, C.armorHi);
-  px(c, -5 + lean, -18 + y0, '#ffffff');
-  rect(c, -5 + lean, -16 + y0, 4, 1, shade(C.armor, -10));
-  rect(c, -4 + lean, -17 + y0, 2, 1, rgba(C.glow, 0.7));
+  if (gl < 0.6) px(c, Math.round(gl * 8) + L, hy + 2, '#ffffff');
+  // antenna
+  line(c, -4 + L, hy + 1, -6 + L, hy - 3, A1);
+  px(c, -6 + L, hy - 4, Math.floor(t * 2) % 2 ? '#ff4a5a' : shade('#ff4a5a', -80));
+
+  // ---- shoulder pad (back shoulder, layered)
+  rect(c, -6 + L, -21 + y0, 5, 4, A3);
+  rect(c, -6 + L, -21 + y0, 5, 1, A4);
+  px(c, -6 + L, -21 + y0, '#ffffff');
+  rect(c, -6 + L, -18 + y0, 5, 1, A0);
+  rect(c, -5 + L, -20 + y0, 3, 1, rgba(G, 0.75));
 
   // ---- front arm + weapon
   const sx = 2 + lean;
-  const sy = -15 + y0;
-  const ax = Math.round(sx + Math.cos(armAng) * 5);
-  const ay = Math.round(sy + Math.sin(armAng) * 5);
-  line(c, sx, sy, ax, ay, C.armor);
-  line(c, sx, sy + 1, ax, ay + 1, shade(C.armor, -10));
-  rect(c, ax - 1, ay - 1, 2, 2, shade(C.armorHi, -10)); // fist
+  const sy = -17 + y0;
+  const ex = sx + Math.cos(armAng) * 3;
+  const ey = sy + Math.sin(armAng) * 3;
+  const ax = Math.round(sx + Math.cos(armAng) * 6);
+  const ay = Math.round(sy + Math.sin(armAng) * 6);
+  // front shoulder pad
+  rect(c, sx - 2, sy - 2, 4, 3, shade(C.armorHi, -8));
+  px(c, sx - 2, sy - 2, '#ffffff');
+  // upper arm + elbow + gauntlet with a glowing strip
+  line(c, sx, sy, ex, ey, C.armor);
+  line(c, sx, sy + 1, ex, ey + 1, shade(C.armor, -22));
+  line(c, ex, ey, ax, ay, shade(C.armor, 12));
+  line(c, ex, ey + 1, ax, ay + 1, shade(C.armor, -16));
+  px(c, ex, ey, C.armorHi);
+  px(c, (ex + ax) / 2, (ey + ay) / 2, C.glow);
+  rect(c, ax - 1, ay - 1, 3, 3, shade(C.armorHi, -14)); // fist
+  px(c, ax, ay - 1, '#ffffff');
   if (weapon === 'cannon') {
     const bx = ax;
     const by = ay;

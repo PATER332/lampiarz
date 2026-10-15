@@ -12,6 +12,7 @@ import { lineOfSight, moveBody, overlap, solidAt, tileAt, touchesHazard } from '
 import type { RoomGrid } from '../world/tiles';
 import { T_BREAK, T_EMPTY, T_PLATFORM } from '../world/tiles';
 import { spawnBoss, trackBeams, updateBoss } from './bosses';
+import { pickWeather, WEATHER_INFO, type WeatherKind } from './weather';
 import { COSMETICS, UPGRADES, WEAPONS, type CosmeticId, type UpgradeId, type WeaponId } from './data';
 import { spawnEnemy, updateEnemy, ENEMY_NAMES } from './enemies';
 import type { Bolt, Enemy, Floater, GameEvent, Hazard, Particle, Pickup, Player, Projectile, Prop, RunState, WorldObject } from './types';
@@ -52,6 +53,17 @@ export class Game {
   bolts: Bolt[] = [];
   beams: Beam[] = [];
   props: Prop[] = [];
+  /** weather of the current room (visual + audio; storm wind, slippery snow and fog sight are gameplay) */
+  weather: WeatherKind = 'clear';
+  /** current horizontal wind (px/s), storms only */
+  wind = 0;
+  private windTarget = 0;
+  private windT = 0;
+  /** lightning flash 0..1 (storm / void storm) */
+  lightning = 0;
+  /** where the last bolt hit (x in room pixels) */
+  lightningX = 0;
+  private lightningT = 4;
   /** bullet-time after a perfect dodge */
   slowmo = 0;
   // ---- flow
@@ -297,6 +309,12 @@ export class Game {
     p.airJumps = this.airJumpsMax();
     p.airDashes = this.airDashesMax();
     this.roomTime = 0;
+    this.weather = pickWeather(this.run.seed, area, index, plan.boss, plan.template === 'samouczek');
+    this.wind = 0;
+    this.windTarget = 0;
+    this.lightning = 0;
+    this.lightningT = 3 + Math.random() * 4;
+    this.audio.setAmbience(area, this.weather);
     this.bossId = -1;
     this.bossIntroT = plan.boss ? 1.4 : 0;
     this.doorLocked = plan.lockDoor;
@@ -376,6 +394,7 @@ export class Game {
       if (this.run.comboT <= 0) this.run.combo = 0;
     }
     this.shake = Math.max(0, this.shake - dt * 30);
+    this.updateWeather(dt);
     this.flash = Math.max(0, this.flash - dt * 2.5);
     if (this.bossIntroT > 0) {
       this.bossIntroT -= dt;
@@ -479,13 +498,16 @@ export class Game {
     if (charging) speed *= 0.45;
     if (p.healT > 0) speed *= 0.3;
     const target = dir * speed;
-    const acc = p.onGround ? PLAYER.accelGround : PLAYER.accelAir;
+    const slippery = this.weather === 'snow' && p.onGround;
+    const acc = (p.onGround ? PLAYER.accelGround : PLAYER.accelAir) * (slippery ? 0.45 : 1);
     if (dir !== 0) {
       p.vx += Math.sign(target - p.vx) * Math.min(Math.abs(target - p.vx), acc * dt);
       if (!attacking) p.facing = dir as 1 | -1;
     } else if (p.onGround) {
-      p.vx -= Math.sign(p.vx) * Math.min(Math.abs(p.vx), PLAYER.friction * dt);
+      p.vx -= Math.sign(p.vx) * Math.min(Math.abs(p.vx), PLAYER.friction * (slippery ? 0.18 : 1) * dt);
     } else p.vx *= 1 - dt * 1.5;
+    // storm gusts push you while airborne
+    if (!p.onGround && this.wind !== 0) p.vx += this.wind * dt * 2.2;
 
     // ---- jumping
     if (p.onGround) {
@@ -1207,6 +1229,32 @@ export class Game {
     }
   }
 
+  private updateWeather(dt: number) {
+    this.lightning = Math.max(0, this.lightning - dt * 3);
+    if (this.weather === 'storm') {
+      // gusts: the wind picks a new strength every few seconds and eases towards it
+      this.windT -= dt;
+      if (this.windT <= 0) {
+        this.windT = 2.5 + Math.random() * 3;
+        this.windTarget = (Math.random() < 0.5 ? -1 : 1) * (25 + Math.random() * 45);
+      }
+      this.wind += (this.windTarget - this.wind) * Math.min(1, dt * 1.5);
+    } else this.wind *= 1 - Math.min(1, dt * 3);
+    if (this.weather === 'storm' || this.weather === 'voidstorm') {
+      this.lightningT -= dt;
+      if (this.lightningT <= 0) {
+        this.lightningT = 4 + Math.random() * 6;
+        this.lightning = 1;
+        this.lightningX = this.player.x + (Math.random() - 0.5) * 400;
+        this.audio.play('thunder');
+      }
+    }
+  }
+
+  weatherName() {
+    return WEATHER_INFO[this.weather].name;
+  }
+
   /** Moving platforms move first and carry whoever stands on them. */
   private updateMovers(dt: number) {
     const p = this.player;
@@ -1734,7 +1782,9 @@ export class Game {
     const c = this.playerCenter();
     const ex = e.x + e.w / 2;
     const ey = e.y + e.h / 2;
-    return !this.player.dead && Math.hypot(c.x - ex, c.y - ey) < range && lineOfSight(this.grid, ex, ey, c.x, c.y);
+    // fog shortens everyone's sight
+    const r = this.weather === 'fog' ? range * 0.7 : range;
+    return !this.player.dead && Math.hypot(c.x - ex, c.y - ey) < r && lineOfSight(this.grid, ex, ey, c.x, c.y);
   }
   enemyName(e: Enemy) {
     return ENEMY_NAMES[e.type as keyof typeof ENEMY_NAMES] ?? '';

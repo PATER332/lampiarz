@@ -238,7 +238,7 @@ export const PERMS: PermDef[] = [
 export type CosmeticId = 'standard' | 'karmazyn' | 'zloto' | 'widmo';
 
 export const COSMETICS: Record<CosmeticId, { name: string; cost: number; armor: string; armorHi: string; glow: string; visor: string }> = {
-  standard: { name: 'Prototyp', cost: 0, armor: '#5a6684', armorHi: '#a3b4d4', glow: '#3ee6ff', visor: '#9ff6ff' },
+  standard: { name: 'Prototyp', cost: 0, armor: '#6878a0', armorHi: '#c4d4f0', glow: '#3ee6ff', visor: '#9ff6ff' },
   karmazyn: { name: 'Karmazyn', cost: 30, armor: '#6a2a38', armorHi: '#c25466', glow: '#ff3d5e', visor: '#ffb0bc' },
   zloto: { name: 'Złoty Pancerz', cost: 45, armor: '#6e5628', armorHi: '#d4b060', glow: '#ffd23e', visor: '#fff0b0' },
   widmo: { name: 'Widmo', cost: 60, armor: '#4a3d60', armorHi: '#a896c8', glow: '#c45cff', visor: '#f0dcff' },

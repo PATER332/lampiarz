@@ -7,6 +7,7 @@ import { ACTIONS, DEFAULT_KEYS, Input, Keyboard, keyLabel, MAX_BINDS, type Actio
 import { clearRun, loadMeta, loadRun, saveMeta, saveRun, type Meta } from './core/save';
 import { COSMETICS, PERMS, UPGRADES, WEAPONS, type CosmeticId, type UpgradeId, type WeaponId } from './game/data';
 import { Game } from './game/game';
+import { WEATHER_INFO } from './game/weather';
 import type { GameEvent } from './game/types';
 import { background } from './render/background';
 import { Renderer } from './render/renderer';
@@ -194,6 +195,9 @@ export class App {
       case 'roomEnter':
         this.hudCache = '';
         if (this.meta.tutorialDone) this.saveMeta();
+        // announce a change of weather
+        if (this.game.weather !== this.lastWeather && this.game.weather !== 'clear') this.toast(`${this.game.weatherName()} — ${WEATHER_INFO[this.game.weather].desc}`, '#9fd8ff');
+        this.lastWeather = this.game.weather;
         break;
       case 'dialog': {
         this.dialogEl?.remove();
@@ -261,7 +265,7 @@ export class App {
     const w = WEAPONS[g.weapon];
     this.updateCombo(g);
     this.updateMinimap(g);
-    const key = [Math.ceil(p.hp), p.maxHp, Math.floor(p.energy), p.healCharges, g.run.fragments, g.run.area, g.run.room, ups.map((u) => u + g.up(u)).join(), boss ? Math.ceil(boss.hp) + ':' + boss.phase : '', g.weapon, this.ghostHp.toFixed(2)].join('|');
+    const key = [g.weather, Math.ceil(p.hp), p.maxHp, Math.floor(p.energy), p.healCharges, g.run.fragments, g.run.area, g.run.room, ups.map((u) => u + g.up(u)).join(), boss ? Math.ceil(boss.hp) + ':' + boss.phase : '', g.weapon, this.ghostHp.toFixed(2)].join('|');
     if (key === this.hudCache) return;
     this.hudCache = key;
     const pips = Array.from({ length: ROOMS_PER_AREA }, (_, i) => {
@@ -278,6 +282,7 @@ export class App {
       <div class="hud-tr">
         <div class="area-name">${esc(area.name)}</div>
         <div class="area-sub">Sektor ${g.run.area + 1}/5 · ${esc(area.subtitle.split('—')[1]?.trim() ?? '')}</div>
+        <div class="area-sub weather">Pogoda: ${esc(g.weatherName())}</div>
         <div class="room-pips">${pips}</div>
       </div>
       <div class="hud-bl">
@@ -394,6 +399,7 @@ export class App {
   }
 
   /** Combo counter: a persistent element updated in place every frame (no HUD rebuild). */
+  private lastWeather = 'clear';
   private comboEl: HTMLElement | null = null;
   private comboShown = 0;
   private updateCombo(g: Game) {
@@ -519,6 +525,7 @@ export class App {
     this.signEl?.remove();
     this.dialogEl = this.signEl = null;
     this.audio.stopMusic();
+    this.audio.stopAmbience();
     const run = loadRun();
     this.screen.innerHTML = `
       <div class="vr-screen title-screen">
@@ -541,6 +548,7 @@ export class App {
 
   showHub() {
     this.mode = 'hub';
+    this.audio.stopAmbience();
     this.overlay = null;
     this.back = [];
     this.keyboard.enabled = false;
@@ -682,13 +690,14 @@ export class App {
 
   private settingsHtml() {
     const s = this.meta.settings;
-    const slider = (k: 'master' | 'music' | 'sfx', label: string) => `<div class="set-row"><span>${label}</span><input type="range" min="0" max="100" value="${Math.round(s[k] * 100)}" data-set="${k}"><b>${Math.round(s[k] * 100)}%</b></div>`;
+    const slider = (k: 'master' | 'music' | 'sfx' | 'ambient', label: string) => `<div class="set-row"><span>${label}</span><input type="range" min="0" max="100" value="${Math.round(s[k] * 100)}" data-set="${k}"><b>${Math.round(s[k] * 100)}%</b></div>`;
     return `<div class="vr-screen dim"><div class="panel">
       <button class="close-x" data-act="close" aria-label="Zamknij">×</button>
       <h2>Ustawienia</h2>
       ${slider('master', 'Głośność ogólna')}
       ${slider('music', 'Muzyka')}
       ${slider('sfx', 'Efekty')}
+      ${slider('ambient', 'Otoczenie i pogoda')}
       <div class="set-row"><span>Wstrząsy ekranu</span><span></span><button class="toggle ${s.shake ? 'on' : ''}" data-act="toggle" data-id="shake">${s.shake ? 'WŁ.' : 'WYŁ.'}</button></div>
       <div class="set-row"><span>Liczby obrażeń</span><span></span><button class="toggle ${s.damageNumbers ? 'on' : ''}" data-act="toggle" data-id="damageNumbers">${s.damageNumbers ? 'WŁ.' : 'WYŁ.'}</button></div>
       <div class="set-row"><span>Efekty graficzne (poświata, pierwszy plan)</span><span></span><button class="toggle ${s.effects ? 'on' : ''}" data-act="toggle" data-id="effects">${s.effects ? 'WŁ.' : 'WYŁ.'}</button></div>
@@ -746,7 +755,7 @@ export class App {
     });
     this.screen.querySelectorAll<HTMLInputElement>('input[data-set]').forEach((inp) => {
       inp.oninput = () => {
-        const k = inp.dataset.set as 'master' | 'music' | 'sfx';
+        const k = inp.dataset.set as 'master' | 'music' | 'sfx' | 'ambient';
         this.meta.settings[k] = Number(inp.value) / 100;
         (inp.nextElementSibling as HTMLElement).textContent = `${inp.value}%`;
         this.audio.apply(this.meta.settings);

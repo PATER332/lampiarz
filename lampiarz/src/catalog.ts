@@ -293,7 +293,7 @@ export const GAMES: Game[] = [
       'Mroczna gra akcji 2D w stylu roguelite, w pixel arcie. Cyborg z ostrzem energii schodzi przez pięć sektorów zniszczonego kompleksu badawczego, walczy z mutantami i maszynami, zbiera ulepszenia i mierzy się z trzema strażnikami.',
     about: [
       'Rok 2197. Pod ziemią zbudowano kompleks do badania nieznanej energii zwanej Pustką. Eksperyment wymknął się spod kontroli, a mieszkańcy kompleksu zmienili się w coś innego. Budzisz się jako przebudowany cybernetycznie ocalały, a jedynym głosem w ciemności jest ARIA, system awaryjny, który z każdym sektorem odzyskuje kolejne fragmenty pamięci.',
-      'Pięć sektorów — Opuszczony Kompleks, Strefa Biologiczna, Podziemne Miasto, Rdzeń Energii i Szczelina Pustki — ma własne kolory, zagrożenia i przeciwników: drony, łowców, wieżyczki, prześladowców, tarczowników i istoty Pustki, także w silniejszych, elitarnych odmianach. Każdy groźny atak jest zapowiedziany błyskiem albo czerwoną linią. W pomieszczeniach czekają piły na szynach, wysuwane kolce, miotacze ognia, spadający gruz, ruchome platformy nad przepaściami, a także skrzynie do rozbicia, wybuchowe beczki, wyrzutnie, zawory pary i kruszące się kładki. Minimapa pokazuje wrogów, przeszkody i wyjście. Trzej strażnicy — Matka Roju, Strażnik Rdzenia i Serce Pustki — walczą w kilku fazach.',
+      'Pięć sektorów — Opuszczony Kompleks, Strefa Biologiczna, Podziemne Miasto, Rdzeń Energii i Szczelina Pustki — ma własne kolory, zagrożenia i przeciwników: drony, łowców, wieżyczki, prześladowców, tarczowników i istoty Pustki, także w silniejszych, elitarnych odmianach. Każdy groźny atak jest zapowiedziany błyskiem albo czerwoną linią. W pomieszczeniach czekają piły na szynach, wysuwane kolce, miotacze ognia, spadający gruz, ruchome platformy nad przepaściami, a także skrzynie do rozbicia, wybuchowe beczki, wyrzutnie, zawory pary i kruszące się kładki. Minimapa pokazuje wrogów, przeszkody i wyjście. Każde pomieszczenie ma swoją pogodę — deszcz, burzę z błyskawicami, mgłę, śnieg chłodziwa, popiół albo Burzę Pustki — z własnymi dźwiękami otoczenia. Trzej strażnicy — Matka Roju, Strażnik Rdzenia i Serce Pustki — walczą w kilku fazach.',
       'Każda wyprawa układa pomieszczenia w innej kolejności. Przy ołtarzach wybierasz ulepszenia, które zmieniają walkę: wyładowania łańcuchowe, wybuchy po zrywie, mocniejsze ataki naładowane. Po śmierci wyprawa się kończy, ale Fragmenty Pustki zostają — w bazie kupisz za nie więcej zdrowia, nanoapteczki, drugi zryw w powietrzu, nowe bronie (Ciężkie Ostrze, Działo Pustki) i wygląd pancerza.',
     ],
     category: 'akcja',
@@ -335,6 +335,7 @@ export const GAMES: Game[] = [
       { label: 'Przeciwnicy', value: '6 rodzajów + odmiany elitarne' },
       { label: 'Ruch', value: 'Podwójny skok, zryw, ślizg i odbicie od ścian, cięcie w dół' },
       { label: 'Przeszkody', value: 'Piły, kolce, ogień, spadający gruz, ruchome platformy i inne' },
+      { label: 'Pogoda', value: 'Deszcz, burza, mgła, śnieg, popiół, Burza Pustki — z dźwiękiem' },
       { label: 'Bossowie', value: '3, każdy z kilkoma fazami' },
       { label: 'Bronie', value: '3: Ostrze Energetyczne, Ciężkie Ostrze, Działo Pustki' },
       { label: 'Ulepszenia wyprawy', value: '13 rodzajów' },
