@@ -2,7 +2,7 @@
   "name": "evgames",
   "private": true,
   "version": "1.0.0",
-  "description": "EVGAMES — platforma gier przeglądarkowych: Lampiarz, RANDOM CHAOS, Skrzynkomat i BABCIA: Dom bez wyjścia.",
+  "description": "EVGAMES — platforma gier przeglądarkowych: Lampiarz, RANDOM CHAOS, Skrzynkomat, BABCIA: Dom bez wyjścia i ECHOBOUND.",
   "type": "module",
   "scripts": {
     "build": "node build.mjs",

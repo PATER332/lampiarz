@@ -653,7 +653,7 @@ export function Privacy() {
         <p>Dane nie opuszczają twojego urządzenia. Usuniesz je, czyszcząc dane tej witryny w ustawieniach przeglądarki.</p>
         <h2>Czcionki zewnętrzne</h2>
         <p>
-          Gra Skrzynkomat pobiera czcionki z Google Fonts (<code>fonts.googleapis.com</code>, <code>fonts.gstatic.com</code>). Przy jej uruchomieniu przeglądarka łączy się z serwerami Google, które widzą techniczne dane połączenia, np. adres IP. Pozostałe gry i sama platforma używają wyłącznie czcionek z tej witryny.
+          Gry Skrzynkomat i ECHOBOUND pobierają czcionki z Google Fonts (<code>fonts.googleapis.com</code>, <code>fonts.gstatic.com</code>). Przy ich uruchomieniu przeglądarka łączy się z serwerami Google, które widzą techniczne dane połączenia, np. adres IP. Pozostałe gry i sama platforma używają wyłącznie czcionek z tej witryny.
         </p>
         <h2>Hosting</h2>
         <p>Strona jest hostowana na Vercel. Jak każdy serwer, dostawca hostingu może przetwarzać techniczne dane połączenia (np. adres IP) w celu dostarczenia strony i ochrony przed nadużyciami.</p>
