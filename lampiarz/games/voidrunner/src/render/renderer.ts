@@ -5,10 +5,11 @@ import { TILE, VIEW_H, VIEW_W } from '../core/consts';
 import { COSMETICS, WEAPONS } from '../game/data';
 import type { Game } from '../game/game';
 import { AREAS } from '../world/areas';
+import { T_EMPTY, T_HAZARD } from '../world/tiles';
 import { background } from './background';
 import { glow, line, makeCanvas, px, rect, rgba, type Ctx } from './pixel';
-import { renderRoom, type RoomArt } from './roomArt';
-import { drawBoss, drawDoor, drawEnemy, drawObject, drawPickup, drawPlayer, drawProjectile, drawSlash } from './sprites';
+import { renderRoom, type Anim, type RoomArt } from './roomArt';
+import { drawBoss, drawDoor, drawEnemy, drawMarker, drawObject, drawPickup, drawPlayer, drawProjectile, drawProp, drawSlash } from './sprites';
 
 /** Draws a sprite with a 1-pixel dark outline so characters read clearly against any wall. */
 class Outliner {
@@ -20,7 +21,7 @@ class Outliner {
     [this.cv, this.c] = makeCanvas(size, size);
     [this.sil, this.sc] = makeCanvas(size, size);
   }
-  draw(target: Ctx, cx: number, cy: number, color: string, fn: (c: Ctx) => void) {
+  draw(target: Ctx, cx: number, cy: number, color: string, fn: (c: Ctx) => void, flash = 0) {
     const s = this.size;
     const bx = Math.round(cx - s / 2);
     const by = Math.round(cy - s / 2);
@@ -39,6 +40,19 @@ class Outliner {
     this.sc.fillRect(0, 0, s, s);
     for (const [ox, oy] of [[-1, 0], [1, 0], [0, -1], [0, 1]]) target.drawImage(this.sil, bx + ox, by + oy);
     target.drawImage(this.cv, bx, by);
+    if (flash > 0) {
+      // hit flash: the whole sprite turns white for a moment
+      this.sc.globalCompositeOperation = 'source-over';
+      this.sc.clearRect(0, 0, s, s);
+      this.sc.drawImage(this.cv, 0, 0);
+      this.sc.globalCompositeOperation = 'source-in';
+      this.sc.fillStyle = '#ffffff';
+      this.sc.fillRect(0, 0, s, s);
+      const a = target.globalAlpha;
+      target.globalAlpha = Math.min(1, flash) * a;
+      target.drawImage(this.sil, bx, by);
+      target.globalAlpha = a;
+    }
   }
 }
 
@@ -59,6 +73,13 @@ export class Renderer {
   shakeOn = true;
   private trail: { x: number; y: number; t: number; facing: number; anim: string }[] = [];
   private fogT = 0;
+  private bloomCv: HTMLCanvasElement;
+  private bc: Ctx;
+  private bloom2Cv: HTMLCanvasElement;
+  private bc2: Ctx;
+  bloomOn = true;
+  /** ambient motes drifting in screen space (dust, spores, embers, energy, void wisps) */
+  private motes: { x: number; y: number; z: number; ph: number }[] = [];
 
   constructor(canvas: HTMLCanvasElement, overlay: HTMLCanvasElement) {
     this.canvas = canvas;
@@ -69,6 +90,11 @@ export class Renderer {
     this.overlay = overlay;
     this.oc = overlay.getContext('2d')!;
     [this.light, this.lc] = makeCanvas(VIEW_W, VIEW_H);
+    [this.bloomCv, this.bc] = makeCanvas(VIEW_W / 4, VIEW_H / 4);
+    [this.bloom2Cv, this.bc2] = makeCanvas(VIEW_W / 8, Math.ceil(VIEW_H / 8));
+    this.bc.imageSmoothingEnabled = true;
+    this.bc2.imageSmoothingEnabled = true;
+    for (let i = 0; i < 60; i++) this.motes.push({ x: Math.random() * VIEW_W, y: Math.random() * VIEW_H, z: 0.3 + Math.random() * 0.9, ph: Math.random() * 10 });
   }
 
   /** Fit the buffer into the window: integer scale when possible, crisp pixels always. */
@@ -91,7 +117,9 @@ export class Renderer {
   private roomArt(g: Game) {
     const key = `${g.run.seed}:${g.run.area}:${g.run.room}`;
     if (key !== this.artKey) {
-      this.art = renderRoom(g.room.grid, g.run.area, (g.run.seed ^ (g.run.area * 7919 + g.run.room * 104729)) >>> 0);
+      const skip = new Set<number>();
+      for (const pr of g.props) if (pr.kind === 'crumble') for (const i of pr.tiles ?? []) skip.add(i);
+      this.art = renderRoom(g.room.grid, g.run.area, (g.run.seed ^ (g.run.area * 7919 + g.run.room * 104729)) >>> 0, skip);
       this.artKey = key;
       this.trail = [];
       // snap the camera on room change
@@ -152,6 +180,10 @@ export class Renderer {
     c.save();
     c.translate(-cx, -cy);
     c.drawImage(art.back, 0, 0);
+    for (const a of art.anims) {
+      if (a.x < cx - 40 || a.x > cx + VIEW_W + 40 || a.y > cy + VIEW_H + 10 || a.y + a.h < cy - 10) continue;
+      drawAnim(c, a, t);
+    }
     c.drawImage(art.front, 0, 0);
 
     // ---- animated hazard tiles
@@ -172,13 +204,44 @@ export class Renderer {
     // ---- objects
     const near = g.nearObject();
     for (const o of g.objects) drawObject(c, o, area, t, o === near);
+    for (const pr of g.props) if (pr.x + pr.w > cx - 20 && pr.x < cx + VIEW_W + 20) drawProp(c, pr, area, t);
     for (const k2 of g.pickups) drawPickup(c, k2, t);
+
+    // ---- contact shadows under everything standing on the ground
+    c.save();
+    c.fillStyle = 'rgba(0,0,0,0.35)';
+    const shadow = (x: number, y: number, w: number) => {
+      c.beginPath();
+      c.ellipse(Math.round(x), Math.round(y) - 0.5, w / 2, 1.5, 0, 0, Math.PI * 2);
+      c.fill();
+    };
+    if (!p.dead) {
+      const gy = groundBelow(g, p.x + p.w / 2, p.y + p.h);
+      if (gy !== null) {
+        const d = gy - (p.y + p.h);
+        shadow(p.x + p.w / 2, gy, Math.max(4, p.w + 4 - d * 0.15));
+      }
+    }
+    for (const e of g.enemies) if (!e.dead && e.onGround && e.type !== 'turret') shadow(e.x + e.w / 2, e.y + e.h, e.w + 2);
+    c.restore();
 
     // ---- enemies
     for (const e of g.enemies) {
       if (e.x + e.w < cx - 40 || e.x > cx + VIEW_W + 40) continue;
-      if (e.type === 'boss') this.outlineBig.draw(c, e.x + e.w / 2, e.y + e.h / 2 - (e.boss === 'matka' ? 6 : 0), '#020308', (cc) => drawBoss(cc, e, t));
-      else this.outline.draw(c, e.x + e.w / 2, e.y + e.h / 2, '#020308', (cc) => drawEnemy(cc, e, area, t));
+      const fl = e.flash > 0 && !e.dead ? 0.85 : 0;
+      if (e.type === 'boss') this.outlineBig.draw(c, e.x + e.w / 2, e.y + e.h / 2 - (e.boss === 'matka' ? 6 : 0), '#020308', (cc) => drawBoss(cc, e, t), fl * 0.7);
+      else this.outline.draw(c, e.x + e.w / 2, e.y + e.h / 2, e.elite ? '#2a040c' : '#020308', (cc) => drawEnemy(cc, e, area, t), fl);
+      if (e.type === 'shield' && !e.dead && e.guard && e.flash > 0) {
+        // blocked hit: sparks of a shield bubble in front
+        c.save();
+        c.globalCompositeOperation = 'lighter';
+        c.strokeStyle = rgba('#9fd8ff', 0.6 * Math.min(1, e.flash * 6));
+        c.lineWidth = 1;
+        c.beginPath();
+        c.arc(e.x + e.w / 2, e.y + e.h / 2, 14, e.facing > 0 ? -1 : Math.PI - 1, e.facing > 0 ? 1 : Math.PI + 1);
+        c.stroke();
+        c.restore();
+      }
       // turret aim line while charging
       if (e.type === 'turret' && e.state === 'charge' && e.aimX !== undefined) {
         c.save();
@@ -199,14 +262,29 @@ export class Renderer {
     this.trail = this.trail.filter((tr) => tr.t < 0.22);
     for (const tr of this.trail) {
       c.save();
-      c.globalAlpha = 0.35 * (1 - tr.t / 0.22);
+      const ka = 1 - tr.t / 0.22;
+      c.globalAlpha = 0.35 * ka;
       c.globalCompositeOperation = 'lighter';
-      rect(c, tr.x + 1, tr.y + 2, p.w - 2, p.h - 4, col);
+      rect(c, tr.x + 1, tr.y + 4, p.w - 2, p.h - 6, col);
+      rect(c, tr.x + 2, tr.y - 3, p.w - 4, 6, col);
+      c.globalAlpha = 0.6 * ka;
+      rect(c, tr.x + p.w / 2 - 1, tr.y + 2, 2, p.h - 4, '#ffffff');
       c.restore();
     }
     const chargeK = p.chargeT > 0.12 && g.input.down('attack') ? Math.min(1, p.chargeT / g.chargeTime()) : 0;
     drawSlash(c, p, g.cosmetic, g.weapon, g.reach());
-    this.outline.draw(c, p.x + p.w / 2, p.y + p.h / 2 - 4, '#020308', (cc) => drawPlayer(cc, p, g.cosmetic, g.weapon, t, chargeK));
+    // charge aura: particles spiralling into the weapon while charging
+    if (chargeK > 0) {
+      c.save();
+      c.globalCompositeOperation = 'lighter';
+      for (let i = 0; i < 6; i++) {
+        const an = t * 6 + (i * Math.PI) / 3;
+        const rr = 18 * (1 - ((t * 2 + i / 6) % 1));
+        px(c, p.x + p.w / 2 + Math.cos(an) * rr, p.y + p.h / 2 + Math.sin(an) * rr * 0.7, chargeK >= 1 ? '#ffffff' : col);
+      }
+      c.restore();
+    }
+    this.outline.draw(c, p.x + p.w / 2, p.y + p.h / 2 - 4, '#020308', (cc) => drawPlayer(cc, p, g.cosmetic, g.weapon, t, chargeK), p.hurtT > 0.12 ? 0.8 : 0);
 
     // ---- projectiles & effects
     c.save();
@@ -247,13 +325,35 @@ export class Renderer {
       const s = q.kind === 'smoke' ? q.size * (2 - a) : q.size;
       if (q.kind === 'spark') {
         line(c, q.x, q.y, q.x - q.vx * 0.02, q.y - q.vy * 0.02, q.color);
+        px(c, q.x, q.y, '#ffffff');
+      } else if (q.kind === 'glow') {
+        rect(c, q.x - s / 2, q.y - s / 2, s, s, q.color);
+        c.globalAlpha = a * 0.35;
+        rect(c, q.x - s / 2 - 1, q.y - s / 2 - 1, s + 2, s + 2, q.color);
       } else rect(c, q.x - s / 2, q.y - s / 2, s, s, q.color);
       c.restore();
     }
     c.restore();
 
+    // ---- ambient motes (screen space with a little parallax)
+    this.drawMotes(c, area, dt, cx, cy, t);
+
     // ---- lighting
     this.lighting(g, art, cx, cy, t);
+
+    // ---- bloom: a blurred copy of the brightest parts added back on top
+    if (this.bloomOn) this.bloom(c);
+
+    // ---- foreground silhouettes, moving faster than the room
+    if (this.bloomOn) {
+      const fw = bg.fore.width;
+      const foff = -((cx * 1.25) % fw);
+      c.save();
+      c.globalAlpha = 0.92;
+      const fy = Math.round(Math.max(-24, Math.min(0, -(cy * 0.05) % 24)));
+      for (let x = foff - fw; x < VIEW_W; x += fw) c.drawImage(bg.fore, Math.round(x), fy);
+      c.restore();
+    }
 
     // ---- drifting fog
     c.save();
@@ -272,8 +372,29 @@ export class Renderer {
     c.fillStyle = vg;
     c.fillRect(0, 0, VIEW_W, VIEW_H);
     if (g.flash > 0) {
+      // chromatic split on taking damage
+      c.save();
+      c.globalCompositeOperation = 'lighter';
+      c.globalAlpha = Math.min(0.35, g.flash * 0.6);
+      c.drawImage(this.canvas, 2, 0);
+      c.drawImage(this.canvas, -2, 0);
+      c.restore();
       c.fillStyle = `rgba(255,40,70,${g.flash * 0.35})`;
       c.fillRect(0, 0, VIEW_W, VIEW_H);
+    }
+    if (g.slowmo > 0) {
+      // perfect dodge: cold tint and a pulse ring around the edges
+      const k = Math.min(1, g.slowmo / 0.4);
+      c.fillStyle = `rgba(120,200,255,${0.12 * k})`;
+      c.fillRect(0, 0, VIEW_W, VIEW_H);
+      c.strokeStyle = `rgba(200,240,255,${0.5 * k})`;
+      c.lineWidth = 2;
+      c.strokeRect(3, 3, VIEW_W - 6, VIEW_H - 6);
+    }
+    // faint scanlines for the CRT-ish sci-fi feel
+    if (this.bloomOn) {
+      c.fillStyle = 'rgba(0,0,0,0.06)';
+      for (let y = 0; y < VIEW_H; y += 2) c.fillRect(0, y, VIEW_W, 1);
     }
     if (p.hp < p.maxHp * 0.3 && !p.dead) {
       c.fillStyle = `rgba(255,30,60,${0.08 + Math.sin(t * 5) * 0.05})`;
@@ -289,6 +410,70 @@ export class Renderer {
     // ---- text overlay (crisp)
     this.drawText(g, cx, cy);
   }
+
+  private bloom(c: Ctx) {
+    const b = this.bc;
+    const bw = this.bloomCv.width;
+    const bh = this.bloomCv.height;
+    b.globalCompositeOperation = 'source-over';
+    b.globalAlpha = 1;
+    b.drawImage(this.canvas, 0, 0, bw, bh);
+    // squaring the image (multiply by itself) keeps bright areas and crushes the darks: a cheap threshold
+    b.globalCompositeOperation = 'multiply';
+    b.drawImage(this.bloomCv, 0, 0);
+    b.drawImage(this.bloomCv, 0, 0);
+    const b2 = this.bc2;
+    b2.globalCompositeOperation = 'source-over';
+    b2.clearRect(0, 0, this.bloom2Cv.width, this.bloom2Cv.height);
+    b2.drawImage(this.bloomCv, 0, 0, this.bloom2Cv.width, this.bloom2Cv.height);
+    c.save();
+    c.imageSmoothingEnabled = true;
+    c.globalCompositeOperation = 'lighter';
+    c.globalAlpha = 0.45;
+    c.drawImage(this.bloomCv, 0, 0, VIEW_W, VIEW_H);
+    c.globalAlpha = 0.35;
+    c.drawImage(this.bloom2Cv, 0, 0, VIEW_W, VIEW_H);
+    c.restore();
+    c.imageSmoothingEnabled = false;
+  }
+
+  private drawMotes(c: Ctx, area: number, dt: number, cx: number, cy: number, t: number) {
+    const pal = AREAS[area].palette;
+    // per-sector look: dust (0), spores rising (1), embers falling (2), energy specks (3), void wisps (4)
+    const cfg = [
+      { vx: 4, vy: 3, col: '#c8d2e6', a: 0.35 },
+      { vx: 2, vy: -8, col: '#7dff4a', a: 0.55 },
+      { vx: -6, vy: 14, col: '#ffb23e', a: 0.6 },
+      { vx: 0, vy: -4, col: pal.accent, a: 0.6 },
+      { vx: 3, vy: -6, col: '#e04aff', a: 0.6 },
+    ][area] ?? { vx: 4, vy: 3, col: '#c8d2e6', a: 0.35 };
+    if (this.lastCx === null) {
+      this.lastCx = cx;
+      this.lastCy = cy;
+    }
+    const dcx = cx - this.lastCx;
+    const dcy = cy - (this.lastCy ?? cy);
+    this.lastCx = cx;
+    this.lastCy = cy;
+    c.save();
+    c.globalCompositeOperation = 'lighter';
+    for (const m of this.motes) {
+      m.x += (cfg.vx + Math.sin(t * 0.8 + m.ph) * 4) * m.z * dt - (Math.abs(dcx) < 100 ? dcx * m.z : 0);
+      m.y += (cfg.vy + Math.cos(t * 0.6 + m.ph) * 3) * m.z * dt - (Math.abs(dcy) < 100 ? dcy * m.z : 0);
+      if (m.x < -4) m.x += VIEW_W + 8;
+      if (m.x > VIEW_W + 4) m.x -= VIEW_W + 8;
+      if (m.y < -4) m.y += VIEW_H + 8;
+      if (m.y > VIEW_H + 4) m.y -= VIEW_H + 8;
+      const tw = 0.5 + 0.5 * Math.sin(t * 2 + m.ph * 3);
+      c.globalAlpha = cfg.a * m.z * (0.4 + tw * 0.6);
+      const sz = m.z > 1 ? 2 : 1;
+      rect(c, m.x, m.y, sz, sz, cfg.col);
+      if (area === 2 && m.z > 0.8) px(c, m.x + 1, m.y - 2, cfg.col); // ember streak
+    }
+    c.restore();
+  }
+  private lastCx: number | null = null;
+  private lastCy: number | null = null;
 
   private lighting(g: Game, art: RoomArt, cx: number, cy: number, t: number) {
     const lc = this.lc;
@@ -330,6 +515,12 @@ export class Renderer {
     if (!g.doorLocked) hole(g.room.exit.x * TILE + 8, (g.room.exit.y - 1) * TILE, 40, 0.5);
     for (const o of g.objects) if (!o.used || o.kind === 'checkpoint') hole(o.x, o.y - 12, 34, 0.45);
     for (const k of g.pickups) hole(k.x, k.y, 12, 0.35);
+    for (const pr of g.props) {
+      if (pr.kind === 'barrel' && pr.state === 'lit') hole(pr.x + pr.w / 2, pr.y + pr.h / 2, 50, 0.7);
+      else if (pr.kind === 'pad') hole(pr.x + pr.w / 2, pr.y, 26, 0.45);
+      else if (pr.kind === 'vent') hole(pr.x + pr.w / 2, pr.y - 6, 18, 0.3);
+    }
+    for (const q of g.particles) if (q.kind === 'glow' && q.size >= 3) hole(q.x, q.y, 10, 0.25 * (q.life / q.max));
     this.c.drawImage(this.light, 0, 0);
     // coloured light: a light additive tint around light sources
     const c = this.c;
@@ -512,6 +703,9 @@ function drawHazard(c: Ctx, h: Game['hazards'][number], t: number, roomW: number
       for (let i = 0; i < h.w; i += 3) px(c, h.x + i, h.y + 1 + Math.round(Math.sin(t * 5 + i)), '#d8ffe6');
       c.restore();
       break;
+    case 'marker':
+      if (h.t < h.warn + 0.3) drawMarker(c, h.x, h.y, h.w, h.h, Math.min(1, h.t / h.warn), t);
+      break;
     case 'mine':
       if (h.t < h.warn) {
         c.save();
@@ -520,6 +714,151 @@ function drawHazard(c: Ctx, h: Game['hazards'][number], t: number, roomW: number
         c.restore();
       }
       break;
+  }
+}
+
+/** The first floor surface under a point (pixels), or null when there is none nearby. */
+function groundBelow(g: Game, x: number, y: number): number | null {
+  const tx = Math.floor(x / TILE);
+  for (let ty = Math.floor((y - 1) / TILE) + 1, n = 0; n < 6 && ty < g.grid.h; ty++, n++) {
+    const k = g.grid.tiles[ty * g.grid.w + tx];
+    if (k !== T_EMPTY && k !== T_HAZARD) return ty * TILE;
+  }
+  return null;
+}
+
+function drawAnim(c: Ctx, a: Anim, t: number) {
+  switch (a.kind) {
+    case 'shaft': {
+      // volumetric cone of light under a ceiling lamp
+      const on = a.ph === 0 || Math.sin(t * 13 + a.ph * 7) > -0.6;
+      if (!on) return;
+      c.save();
+      c.globalCompositeOperation = 'lighter';
+      const gr = c.createLinearGradient(0, a.y, 0, a.y + a.h);
+      gr.addColorStop(0, rgba(a.color, 0.16));
+      gr.addColorStop(1, rgba(a.color, 0));
+      c.fillStyle = gr;
+      c.beginPath();
+      c.moveTo(a.x - 4, a.y);
+      c.lineTo(a.x + 4, a.y);
+      c.lineTo(a.x + 4 + a.h * 0.35, a.y + a.h);
+      c.lineTo(a.x - 4 - a.h * 0.35, a.y + a.h);
+      c.closePath();
+      c.fill();
+      // dust in the beam
+      for (let i = 0; i < 5; i++) {
+        const k = (t * 0.07 + i * 0.21 + a.ph) % 1;
+        const yy = a.y + k * a.h;
+        const xx = a.x + Math.sin(t * 0.7 + i * 2 + a.ph) * (4 + k * a.h * 0.3);
+        px(c, xx, yy, rgba('#ffffff', 0.35 * (1 - k)));
+      }
+      c.restore();
+      break;
+    }
+    case 'drip': {
+      const period = 2.2 + (a.ph % 1.5);
+      const k = ((t + a.ph) % period) / period;
+      if (k < 0.55) {
+        // drop swelling
+        if (k > 0.3) px(c, a.x, a.y, a.color);
+      } else {
+        const f = (k - 0.55) / 0.45;
+        const y = a.y + f * f * a.h;
+        if (y < a.y + a.h - 1) {
+          px(c, a.x, y, a.color);
+          px(c, a.x, y - 1, rgba(a.color, 0.5));
+        } else {
+          // splash
+          px(c, a.x - 1, a.y + a.h - 2, a.color);
+          px(c, a.x + 1, a.y + a.h - 2, a.color);
+        }
+      }
+      break;
+    }
+    case 'led': {
+      const on = Math.sin(t * (1.5 + (a.ph % 3)) + a.ph) > 0.2;
+      rect(c, a.x, a.y, a.h, 1, on ? a.color : '#1a1d28');
+      if (on) {
+        c.save();
+        c.globalCompositeOperation = 'lighter';
+        glow(c, a.x + 1, a.y, 4, a.color, 0.4);
+        c.restore();
+      }
+      break;
+    }
+    case 'fan': {
+      const ang = t * 6 + a.ph;
+      for (let i = 0; i < 3; i++) {
+        const an = ang + (i * Math.PI * 2) / 3;
+        line(c, a.x, a.y, a.x + Math.cos(an) * a.h, a.y + Math.sin(an) * a.h, '#2e3546');
+        line(c, a.x, a.y, a.x + Math.cos(an + 0.3) * (a.h - 2), a.y + Math.sin(an + 0.3) * (a.h - 2), '#252b3a');
+      }
+      rect(c, a.x - 1, a.y - 1, 3, 3, '#4a5470');
+      break;
+    }
+    case 'neon': {
+      // occasional stutter
+      const off = Math.sin(t * 23 + a.ph * 5) > 0.93 || (Math.sin(t * 0.7 + a.ph) > 0.97 && Math.floor(t * 30) % 2 === 0);
+      if (off) {
+        c.save();
+        c.globalAlpha = 0.8;
+        for (let i = 0; i < a.h; i++) rect(c, a.x, a.y + i * 3, 4, 1, '#1a1220');
+        c.restore();
+      }
+      break;
+    }
+    case 'screen': {
+      // scrolling lines of text
+      c.save();
+      c.globalAlpha = 0.8;
+      const rows = Math.max(2, Math.floor(a.h / 2));
+      for (let i = 0; i < rows; i++) {
+        const w = 2 + Math.floor(((Math.sin(i * 7.1 + Math.floor(t * 3 + a.ph) * 1.7) + 1) / 2) * 5);
+        rect(c, a.x + 1, a.y + i * 2, w, 1, i === Math.floor(t * 4 + a.ph) % rows ? '#ffffff' : rgba(a.color, 0.9));
+      }
+      c.restore();
+      break;
+    }
+    case 'arc': {
+      if (Math.sin(t * 9 + a.ph * 3) < 0.5) return;
+      c.save();
+      c.globalCompositeOperation = 'lighter';
+      let x = a.x;
+      let y = a.y;
+      for (let i = 0; i < 4; i++) {
+        const nx = a.x + (Math.random() - 0.5) * a.h * 1.4;
+        const ny = a.y - 2 - i * 2 + (Math.random() - 0.5) * 3;
+        line(c, x, y, nx, ny, i % 2 ? '#ffffff' : a.color);
+        x = nx;
+        y = ny;
+      }
+      c.restore();
+      break;
+    }
+    case 'bulb': {
+      const sw = Math.sin(t * 1.3 + a.ph) * 1.2;
+      const on = Math.sin(t * 17 + a.ph * 4) > -0.85;
+      px(c, a.x + sw, a.y, on ? '#fff2b0' : '#5a4a2a');
+      if (on) {
+        c.save();
+        c.globalCompositeOperation = 'lighter';
+        glow(c, a.x + sw, a.y, 6, a.color, 0.4);
+        c.restore();
+      }
+      break;
+    }
+    case 'steam': {
+      c.save();
+      for (let i = 0; i < 4; i++) {
+        const k = (t * 0.6 + i * 0.25 + a.ph) % 1;
+        c.globalAlpha = 0.25 * (1 - k);
+        const sz = 1 + Math.floor(k * 4);
+        rect(c, a.x + Math.sin(t + i) * 2 + k * 6, a.y + k * 18, sz, sz, a.color);
+      }
+      c.restore();
+      break;
+    }
   }
 }
 

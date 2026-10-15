@@ -5,7 +5,7 @@ import { Rng } from '../core/rng';
 import { AREAS, type EnemyType } from './areas';
 import { buildGrid, TEMPLATES, templateById, type RoomTemplate } from './rooms';
 import type { RoomGrid } from './tiles';
-import { T_EMPTY, T_SOLID } from './tiles';
+import { T_EMPTY, T_PLATFORM, T_SOLID } from './tiles';
 
 export type ObjectKind = 'altar' | 'chest' | 'terminal' | 'checkpoint' | 'sign' | 'secret' | 'medstation';
 export type RoomRole = 'start' | 'combat' | 'upgrade' | 'explore' | 'treasure' | 'elite' | 'boss';
@@ -36,6 +36,8 @@ export interface RoomPlan {
   enemies: PlacedEnemy[];
   pickups: { x: number; y: number; value: number }[];
   lasers: { x: number; y0: number; y1: number; phase: number }[];
+  /** interactive scenery: crates, explosive barrels, jump pads, steam vents, crumbling walkways */
+  props: { kind: 'crate' | 'barrel' | 'pad' | 'vent' | 'crumble'; x: number; y: number; w?: number }[];
   boss: string | null;
   /** doors stay locked until every enemy in the room is defeated */
   lockDoor: boolean;
@@ -99,6 +101,7 @@ function fillRoom(tpl: RoomTemplate, role: RoomRole, area: number, index: number
     enemies: [],
     pickups: [],
     lasers: [],
+    props: [],
     boss: role === 'boss' ? def.boss : null,
     lockDoor: role === 'combat' || role === 'upgrade' || role === 'elite' || role === 'boss',
   };
@@ -182,7 +185,88 @@ function fillRoom(tpl: RoomTemplate, role: RoomRole, area: number, index: number
       }
     }
   }
+  placeProps(plan, rng);
   return plan;
+}
+
+/** Free floor cells (two empty tiles above solid ground), away from doors, objects and slots. */
+function floorCells(plan: RoomPlan, headroom = 2) {
+  const g = plan.grid;
+  const at = (x: number, y: number) => (x < 0 || y < 0 || x >= g.w || y >= g.h ? T_SOLID : g.tiles[y * g.w + x]);
+  const taken = (x: number, y: number) =>
+    Math.abs(x - plan.spawn.x) < 4 && Math.abs(y - plan.spawn.y) < 3 ||
+    Math.abs(x - plan.exit.x) < 3 && Math.abs(y - plan.exit.y) < 3 ||
+    plan.objects.some((o) => Math.abs(o.x - x) < 2 && Math.abs(o.y - y) < 2) ||
+    g.marks.some((m) => m.x === x && m.y === y);
+  const out: { x: number; y: number }[] = [];
+  for (let y = 1; y < g.h - 1; y++)
+    for (let x = 2; x < g.w - 2; x++) {
+      if (at(x, y + 1) !== T_SOLID) continue;
+      let ok = true;
+      for (let k = 0; k < headroom; k++) if (at(x, y - k) !== T_EMPTY) ok = false;
+      if (ok && !taken(x, y)) out.push({ x, y });
+    }
+  return out;
+}
+
+function placeProps(plan: RoomPlan, rng: Rng) {
+  if (plan.role === 'boss') return;
+  const area = plan.area;
+  const used = new Set<string>();
+  const take = (cells: { x: number; y: number }[]) => {
+    for (let i = 0; i < 12 && cells.length; i++) {
+      const c = cells[rng.int(0, cells.length - 1)];
+      const key = `${c.x},${c.y}`;
+      if ([...used].some((u) => {
+        const [ux, uy] = u.split(',').map(Number);
+        return Math.abs(ux - c.x) < 3 && uy === c.y;
+      })) continue;
+      used.add(key);
+      return c;
+    }
+    return null;
+  };
+  const cells = floorCells(plan);
+  const nCrates = plan.role === 'start' ? 1 : rng.int(1, 3);
+  for (let i = 0; i < nCrates; i++) {
+    const c = take(cells);
+    if (c) plan.props.push({ kind: 'crate', x: c.x, y: c.y });
+  }
+  if (plan.role !== 'start') {
+    const nBarrels = plan.role === 'treasure' ? 0 : rng.int(0, 2);
+    for (let i = 0; i < nBarrels; i++) {
+      const c = take(cells);
+      if (c) plan.props.push({ kind: 'barrel', x: c.x, y: c.y });
+    }
+  }
+  if (area === 0 || area === 3) {
+    const n = plan.role === 'start' ? 0 : rng.int(1, 2);
+    for (let i = 0; i < n; i++) {
+      const c = take(floorCells(plan, 4));
+      if (c) plan.props.push({ kind: 'vent', x: c.x, y: c.y });
+    }
+  }
+  if (area === 1 || area === 4) {
+    const c = take(floorCells(plan, 8));
+    if (c && plan.role !== 'start') plan.props.push({ kind: 'pad', x: c.x, y: c.y });
+  }
+  if (area === 2) {
+    // a few walkways crumble under your feet (and come back a moment later)
+    const g = plan.grid;
+    const runs: { x: number; y: number; w: number }[] = [];
+    for (let y = 1; y < g.h - 2; y++) {
+      let x = 1;
+      while (x < g.w - 1) {
+        if (g.tiles[y * g.w + x] === T_PLATFORM) {
+          const x0 = x;
+          while (x < g.w - 1 && g.tiles[y * g.w + x] === T_PLATFORM) x++;
+          if (x - x0 >= 3) runs.push({ x: x0, y, w: x - x0 });
+        } else x++;
+      }
+    }
+    rng.shuffle(runs);
+    for (const r of runs.slice(0, 2)) plan.props.push({ kind: 'crumble', x: r.x, y: r.y, w: r.w });
+  }
 }
 
 export function planExpedition(seed: number, tutorial = false) {

@@ -1,6 +1,6 @@
 // The five sectors of the complex: names, palettes, enemy pools and story fragments.
 
-export type EnemyType = 'drone' | 'hunter' | 'turret' | 'stalker' | 'void';
+export type EnemyType = 'drone' | 'hunter' | 'turret' | 'stalker' | 'void' | 'shield';
 export type BossType = 'matka' | 'straznik' | 'serce';
 
 export interface Palette {
@@ -101,9 +101,9 @@ export const AREAS: AreaDef[] = [
     name: 'Podziemne Miasto',
     subtitle: 'Sektor C — osiedle personelu',
     hazardName: 'Odsłonięte kable',
-    ground: ['stalker', 'hunter'],
+    ground: ['stalker', 'hunter', 'shield'],
     air: ['drone'],
-    elite: ['stalker', 'hunter'],
+    elite: ['stalker', 'hunter', 'shield'],
     eliteChance: 0.12,
     boss: null,
     palette: {
@@ -132,7 +132,7 @@ export const AREAS: AreaDef[] = [
     name: 'Rdzeń Energii',
     subtitle: 'Sektor D — reaktor Pustki',
     hazardName: 'Wyładowania',
-    ground: ['stalker', 'hunter'],
+    ground: ['stalker', 'hunter', 'shield'],
     air: ['void', 'drone'],
     elite: ['void', 'stalker'],
     eliteChance: 0.18,
@@ -163,7 +163,7 @@ export const AREAS: AreaDef[] = [
     name: 'Szczelina Pustki',
     subtitle: 'Poza mapą kompleksu',
     hazardName: 'Pustka',
-    ground: ['stalker', 'hunter'],
+    ground: ['stalker', 'hunter', 'shield'],
     air: ['void'],
     elite: ['void', 'stalker', 'hunter'],
     eliteChance: 0.25,

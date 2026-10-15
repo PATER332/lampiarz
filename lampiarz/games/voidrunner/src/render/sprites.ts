@@ -2,7 +2,7 @@
 // low-resolution buffer, anchored at the body's feet so sprites always stand on the ground.
 
 import { COSMETICS, type CosmeticId, type WeaponId } from '../game/data';
-import type { Enemy, Player, Projectile, WorldObject, Pickup } from '../game/types';
+import type { Enemy, Player, Projectile, WorldObject, Pickup, Prop } from '../game/types';
 import { AREAS } from '../world/areas';
 import { line, px, rect, rgba, shade, type Ctx, glow } from './pixel';
 
@@ -68,12 +68,25 @@ export function drawPlayer(c: Ctx, p: Player, cos: CosmeticId, weapon: WeaponId,
     squash = 3;
     armAng = 0.3;
   } else if (a === 'victory') armAng = -1.6;
+  else if (a === 'wall') {
+    // pressed against the wall behind, one hand dragging along it, knees bent
+    lean = -1;
+    legA = 0.6;
+    armAng = -0.5;
+  }
   if (a === 'attack' && p.attack) {
     const k = Math.min(1, p.attack.t / Math.max(0.01, p.attack.dur * 0.55));
-    if (weapon === 'cannon') armAng = 0;
-    else if (p.attack.step === 1) armAng = 1.6 - k * 3.4; // upward swing
+    if (p.attack.kind === 'down') {
+      armAng = 0.2 + k * 1.5; // sweeps from forward to straight down
+      tuck = true;
+    } else if (p.attack.kind === 'up') armAng = 0.6 - k * 2.4;
+    else if (weapon === 'cannon') armAng = 0;
+    else if (p.attack.step === 2 && weapon === 'blade') {
+      armAng = 0.05; // forward thrust
+      lean = 2;
+    } else if (p.attack.step === 1) armAng = 1.6 - k * 3.4; // upward swing
     else armAng = -1.9 + k * 3.3; // downward swing
-    lean = 1;
+    lean = Math.max(lean, 1);
   }
   if (a === 'chargeAtk' && p.attack) {
     const k = Math.min(1, p.attack.t / 0.25);
@@ -118,6 +131,19 @@ export function drawPlayer(c: Ctx, p: Player, cos: CosmeticId, weapon: WeaponId,
   rect(c, -7 + lean, -17 + y0, 3, 1, shade(C.armor, 10));
   px(c, -6 + lean, -11 + y0, C.glow);
   if (a === 'jump' || a === 'dash' || p.airJumps < 1) px(c, -6 + lean, -10 + y0, '#ffffff');
+  // thruster flame while dashing or rising fast
+  if (a === 'dash' || (a === 'jump' && p.vy < -200)) {
+    const fl = 2 + Math.floor((t * 40) % 3);
+    rect(c, -7 + lean - fl, -12 + y0, fl, 2, rgba(C.glow, 0.8));
+    px(c, -7 + lean - fl - 1, -11 + y0, rgba('#ffffff', 0.6));
+    px(c, -7 + lean, -12 + y0, '#ffffff');
+  }
+  if (a === 'wall') {
+    // hand on the wall and sparks under the boot
+    line(c, -4, -15 + y0, -8, -17 + y0, shade(C.armor, -20));
+    rect(c, -9, -18 + y0, 2, 2, C.armorHi);
+    if (Math.floor(t * 24) % 3 === 0) px(c, -8, -1, '#ffcf8a');
+  }
   // ---- torso: lit from the upper left
   rect(c, -4 + lean, -17 + y0, 8, 9, C.armor);
   rect(c, -4 + lean, -17 + y0, 8, 1, C.armorHi);
@@ -141,6 +167,10 @@ export function drawPlayer(c: Ctx, p: Player, cos: CosmeticId, weapon: WeaponId,
   rect(c, 0 + lean, -21 + y0, 4, 2, C.visor); // visor
   px(c, -1 + lean, -21 + y0, shade(C.visor, -60));
   px(c, 3 + lean, -21 + y0, '#ffffff');
+  // a scan-line glint runs across the visor every few seconds
+  rect(c, 0 + lean, -20 + y0, 4, 1, shade(C.visor, -35));
+  const gl = (t * 1.7) % 4;
+  if (gl < 0.5) px(c, Math.round(gl * 8) + lean, -21 + y0, '#ffffff');
   rect(c, -2 + lean, -18 + y0, 5, 1, shade(C.armor, -18)); // jaw guard
   // ---- shoulder pad
   rect(c, -5 + lean, -18 + y0, 4, 3, C.armorHi);
@@ -194,45 +224,79 @@ export function drawPlayer(c: Ctx, p: Player, cos: CosmeticId, weapon: WeaponId,
   }
 }
 
-/** Arc of a sword slash (drawn during the active part of a melee swing). */
+/** Arc of a sword slash (drawn during the active part of a melee swing): a bright leading edge,
+ * a fading multi-layer trail behind it and a few sparks thrown off the tip. */
 export function drawSlash(c: Ctx, p: Player, cos: CosmeticId, weapon: WeaponId, reach: number) {
   const a = p.attack;
-  if (!a || weapon === 'cannon') return;
+  if (!a || weapon === 'cannon' || a.kind === 'shot') return;
   const C = COSMETICS[cos];
   const cx = p.x + p.w / 2;
   const cy = p.y + p.h / 2 - 2;
   c.save();
   c.globalCompositeOperation = 'lighter';
+  const sweep = (R: number, from: number, to: number, alpha: number, width: number) => {
+    // trail: several thinner, fainter arcs lagging behind the leading edge
+    const span = to - from;
+    for (let L = 0; L < 4; L++) {
+      const lag = L * 0.16 * Math.sign(span || 1);
+      const s0 = from;
+      const s1 = to - lag;
+      if (Math.sign(s1 - s0) !== Math.sign(span) && L > 0) continue;
+      c.strokeStyle = L === 0 ? rgba(C.glow, 0.8 * alpha) : rgba(C.glow, (0.4 - L * 0.08) * alpha);
+      c.lineWidth = Math.max(1, width - L);
+      c.beginPath();
+      c.arc(0, 0, R - L * 2, Math.min(s0, s1), Math.max(s0, s1));
+      c.stroke();
+    }
+    c.strokeStyle = rgba('#ffffff', 0.9 * alpha);
+    c.lineWidth = 1;
+    c.beginPath();
+    c.arc(0, 0, R + 1, Math.min(from, to), Math.max(from, to));
+    c.stroke();
+    // tip
+    const tx = Math.cos(to) * R;
+    const ty = Math.sin(to) * R;
+    glow(c, tx, ty, 6 + width, C.glow, 0.5 * alpha);
+    px(c, tx, ty, '#ffffff');
+  };
   if (a.kind === 'charged' && weapon === 'blade') {
     const k = Math.min(1, a.t / 0.3);
     const R = 40 * reach;
-    c.strokeStyle = rgba(C.glow, 0.7 * (1 - k * 0.6));
-    c.lineWidth = 4;
-    c.beginPath();
-    c.arc(cx, cy, R * (0.6 + k * 0.4), k * Math.PI * 2 - 1.5, k * Math.PI * 2 + 1.5);
-    c.stroke();
-    c.strokeStyle = rgba('#ffffff', 0.6 * (1 - k));
+    c.translate(cx, cy);
+    const rr = R * (0.6 + k * 0.4);
+    sweep(rr, k * Math.PI * 2 - 1.5, k * Math.PI * 2 + 1.5, 1 - k * 0.6, 4);
+    c.strokeStyle = rgba(C.glow, 0.25 * (1 - k));
     c.lineWidth = 1;
+    c.beginPath();
+    c.arc(0, 0, rr + 5, 0, Math.PI * 2);
     c.stroke();
+  } else if (a.kind === 'down' || a.kind === 'up') {
+    const k = Math.min(1, a.t / 0.2);
+    const alpha = Math.max(0, 1 - k * 0.9);
+    const R = 20 * reach;
+    c.translate(cx, a.kind === 'down' ? p.y + p.h - 2 : p.y + 2);
+    c.scale(p.facing, 1);
+    const base = a.kind === 'down' ? Math.PI / 2 : -Math.PI / 2;
+    const from = base - 1.3;
+    sweep(R, from, from + 2.6 * k, alpha, weapon === 'heavy' ? 5 : 3);
   } else {
     const k = Math.min(1, a.t / Math.max(0.01, a.dur * 0.6));
     const R = (weapon === 'heavy' ? 30 : 22) * reach * (a.kind === 'charged' ? 1.5 : 1);
-    const dir = p.facing;
-    const start = a.step === 1 ? 1.4 : -1.6;
-    const end = a.step === 1 ? -1.4 : 1.2;
+    const start = a.step === 1 ? 1.4 : a.step === 2 ? -0.4 : -1.6;
+    const end = a.step === 1 ? -1.4 : a.step === 2 ? 0.6 : 1.2;
     const ang = start + (end - start) * k;
     const alpha = Math.max(0, 1 - k * 1.1);
-    c.translate(cx, cy);
-    c.scale(dir, 1);
-    c.strokeStyle = rgba(C.glow, 0.75 * alpha);
-    c.lineWidth = weapon === 'heavy' ? 5 : 3;
-    c.beginPath();
-    if (start < end) c.arc(2, 0, R, start, ang);
-    else c.arc(2, 0, R, ang, start);
-    c.stroke();
-    c.strokeStyle = rgba('#ffffff', 0.8 * alpha);
-    c.lineWidth = 1;
-    c.stroke();
+    c.translate(cx + 2 * p.facing, cy);
+    c.scale(p.facing, 1);
+    if (a.step === 2 && weapon === 'blade') {
+      // the third hit is a thrust: a long bright line straight ahead
+      const len = R * 1.3 * Math.min(1, k * 2);
+      c.globalAlpha = alpha;
+      rect(c, 0, -1, len, 3, rgba(C.glow, 0.7));
+      rect(c, 0, 0, len, 1, '#ffffff');
+      glow(c, len, 0, 8, C.glow, 0.6);
+      c.globalAlpha = 1;
+    } else sweep(R, start, ang, alpha, weapon === 'heavy' ? 5 : 3);
   }
   c.restore();
 }
@@ -247,7 +311,6 @@ export function drawEnemy(c: Ctx, e: Enemy, area: number, t: number) {
   }
   c.translate(fx, fy);
   if (e.facing < 0) c.scale(-1, 1);
-  const flash = e.flash > 0;
   const tele = e.state === 'windup' || e.state === 'tell' || e.state === 'charge' || e.state === 'cast' || e.state === 'blinkIn';
   const blink = tele && Math.floor(t * 14) % 2 === 0;
   const eyeCol = e.elite ? '#ff3d5e' : tele ? '#ffffff' : '#ff6a3a';
@@ -362,6 +425,56 @@ export function drawEnemy(c: Ctx, e: Enemy, area: number, t: number) {
       if (e.state === 'tell') glow(c, 3, -21 + crouch, 12, '#ff3d5e', 0.45);
       break;
     }
+    case 'shield': {
+      const armor = e.elite ? '#6a2a3a' : area === 1 ? '#3e5a52' : area === 4 ? '#4a3a64' : '#4a5470';
+      const dark = shade(armor, -30);
+      const walk = Math.abs(e.vx) > 5 ? Math.sin(t * 10 + e.seed) : 0;
+      const tellK = e.state === 'bashTell' ? Math.min(1, e.stateT / 0.5) : 0;
+      const bash = e.state === 'bash';
+      const open = !e.guard;
+      // stocky legs
+      rect(c, -5 + Math.round(walk * 2), -7, 4, 7, dark);
+      rect(c, 1 - Math.round(walk * 2), -7, 4, 7, shade(armor, -16));
+      rect(c, -6 + Math.round(walk * 2), -2, 5, 2, '#14161e');
+      rect(c, 1 - Math.round(walk * 2), -2, 5, 2, '#14161e');
+      // bulky torso with plates
+      rect(c, -7, -19, 12, 12, armor);
+      rect(c, -7, -19, 12, 1, shade(armor, 35));
+      rect(c, -7, -18, 2, 10, shade(armor, 15));
+      rect(c, 3, -18, 2, 10, shade(armor, -18));
+      for (let i = 0; i < 3; i++) rect(c, -5, -15 + i * 3, 8, 1, shade(armor, -22));
+      // exposed reactor core: glows when the guard is down (the opening)
+      const coreCol = open ? (Math.floor(t * 12) % 2 ? '#ffffff' : '#ff6a3a') : '#5a2a1a';
+      rect(c, -3, -14, 3, 3, coreCol);
+      if (open) glow(c, -2, -13, 10, '#ff6a3a', 0.5);
+      // helmet with a narrow slit
+      rect(c, -4, -24, 8, 6, shade(armor, 10));
+      rect(c, -4, -24, 8, 1, shade(armor, 40));
+      rect(c, 0, -22, 4, 1, blink ? '#ffffff' : eyeCol);
+      // the shield: a tall slab held in front
+      const sx = open ? 2 : bash ? 8 : 6 - Math.round(tellK * 3);
+      const sy = open ? -12 : -23;
+      const sh = open ? 12 : 22;
+      const sc = e.elite ? '#8a4a5a' : '#6a7896';
+      rect(c, sx, sy, 4, sh, sc);
+      rect(c, sx, sy, 4, 1, '#c8d2e6');
+      rect(c, sx + 3, sy + 1, 1, sh - 1, shade(sc, -30));
+      rect(c, sx + 1, sy + 1, 1, sh - 2, shade(sc, 25));
+      // emblem / energy strip on the shield face
+      const em = tellK > 0 && Math.floor(t * 16) % 2 ? '#ffffff' : e.elite ? '#ff3d5e' : AREAS[area].palette.accent;
+      if (!open) {
+        rect(c, sx + 2, sy + 6, 1, 10, em);
+        if (e.guard) {
+          c.save();
+          c.globalCompositeOperation = 'lighter';
+          glow(c, sx + 3, sy + sh / 2, 8, em, 0.25 + tellK * 0.4);
+          c.restore();
+        }
+      }
+      if (bash) for (let i = 0; i < 3; i++) rect(c, -14 - i * 4, -18 + i * 6, 6, 1, rgba('#ffffff', 0.5));
+      if (e.elite) rect(c, -7, -19, 12, 1, '#ff3d5e');
+      break;
+    }
     case 'void': {
       const by = -8;
       const fade = e.state === 'blinkOut' ? 1 - e.stateT / 0.35 : e.state === 'blinkIn' ? Math.min(1, e.stateT / 0.3) : 1;
@@ -392,10 +505,6 @@ export function drawEnemy(c: Ctx, e: Enemy, area: number, t: number) {
       if (e.state === 'cast') glow(c, 0, by, 6 + e.stateT * 16, '#c45cff', 0.5);
       break;
     }
-  }
-  if (flash) {
-    c.globalCompositeOperation = 'lighter';
-    glow(c, 0, -e.h / 2, e.w, '#ffffff', 0.6);
   }
   c.restore();
 }
@@ -525,10 +634,6 @@ export function drawBoss(c: Ctx, e: Enemy, t: number) {
     for (let i = 0; i < 6; i++) line(c, 0, 0, Math.cos(i) * 16, Math.sin(i * 1.3) * 18, '#c45cff');
     rect(c, -3, -4, 6, 8, blink ? '#ffffff' : e.state === 'tired' ? '#ffe066' : '#ff8aff');
     px(c, -1, -2, '#ffffff');
-  }
-  if (e.flash > 0) {
-    c.globalCompositeOperation = 'lighter';
-    glow(c, 0, e.boss === 'matka' ? -18 : 0, 34, '#ffffff', 0.45);
   }
   c.restore();
 }
@@ -741,4 +846,139 @@ export function drawDoor(c: Ctx, x: number, y: number, locked: boolean, area: nu
       line(c, x + 6 + ox, ay + 3, x + 3 + ox, ay + 6, '#5dff9b');
     }
   }
+}
+
+// ================================================================== interactive props
+/** Breakable crates, explosive barrels, jump pads, steam vents and crumbling walkways. */
+export function drawProp(c: Ctx, pr: Prop, area: number, t: number) {
+  const pal = AREAS[area].palette;
+  const X = Math.round(pr.x);
+  const Y = Math.round(pr.y);
+  switch (pr.kind) {
+    case 'crate': {
+      if (pr.state === 'gone') return;
+      const wood = area === 1 ? '#3a4a3a' : area === 4 ? '#3a2e4a' : '#4a4030';
+      rect(c, X, Y, 12, 12, wood);
+      rect(c, X, Y, 12, 1, shade(wood, 40));
+      rect(c, X, Y, 1, 12, shade(wood, 22));
+      rect(c, X + 11, Y, 1, 12, shade(wood, -25));
+      rect(c, X, Y + 11, 12, 1, shade(wood, -30));
+      // cross bracing and metal corners
+      line(c, X + 2, Y + 2, X + 9, Y + 9, shade(wood, -22));
+      line(c, X + 9, Y + 2, X + 2, Y + 9, shade(wood, -22));
+      for (const [ox, oy] of [[0, 0], [10, 0], [0, 10], [10, 10]]) rect(c, X + ox, Y + oy, 2, 2, '#8a93ad');
+      // stencilled mark: tells the player there is something inside
+      rect(c, X + 4, Y + 5, 4, 2, rgba(pal.accent, 0.55 + Math.sin(t * 3 + pr.id) * 0.2));
+      break;
+    }
+    case 'barrel': {
+      if (pr.state === 'gone') return;
+      const lit = pr.state === 'lit';
+      const fl = lit && Math.floor(t * 20) % 2 === 0;
+      const body = fl ? '#ffffff' : '#7a2a2a';
+      rect(c, X + 1, Y, 8, 14, body);
+      rect(c, X, Y + 1, 10, 12, body);
+      rect(c, X + 1, Y + 1, 2, 12, shade(body, 30));
+      rect(c, X + 7, Y + 1, 2, 12, shade(body, -30));
+      rect(c, X, Y + 3, 10, 1, '#2a1a1a');
+      rect(c, X, Y + 10, 10, 1, '#2a1a1a');
+      // hazard stripes + warning glyph
+      for (let i = 0; i < 5; i++) rect(c, X + i * 2, Y + 5, 1, 4, i % 2 ? '#1a1a1a' : '#ffcf3a');
+      rect(c, X + 3, Y - 1, 4, 1, '#3a3a3a');
+      if (lit) {
+        const k = Math.min(1, pr.t / 0.45);
+        c.save();
+        c.globalCompositeOperation = 'lighter';
+        glow(c, X + 5, Y + 7, 10 + k * 18, '#ff6a2a', 0.35 + k * 0.4);
+        c.restore();
+        px(c, X + 5, Y - 2 - Math.floor(t * 30) % 3, '#ffe066');
+      } else if (Math.floor(t * 2 + pr.id) % 2 === 0) px(c, X + 5, Y + 2, '#ff4a3a');
+      break;
+    }
+    case 'pad': {
+      const k = Math.max(0, 1 - pr.t / 0.25); // compress + flash right after a launch
+      rect(c, X, Y + 1, 14, 3, '#2a3040');
+      rect(c, X, Y + 1, 14, 1, '#5a6480');
+      const top = Y - 1 + Math.round(k * 2);
+      rect(c, X + 2, top, 10, 2, k > 0 ? '#ffffff' : pal.accent);
+      for (let i = 0; i < 3; i++) {
+        const ay = Y - 4 - ((t * 18 + i * 5) % 14);
+        c.save();
+        c.globalAlpha = 0.6 * (1 - ((t * 18 + i * 5) % 14) / 14);
+        c.globalCompositeOperation = 'lighter';
+        px(c, X + 6, ay, pal.accent);
+        px(c, X + 7, ay, pal.accent);
+        px(c, X + 5, ay + 1, pal.accent);
+        px(c, X + 8, ay + 1, pal.accent);
+        c.restore();
+      }
+      c.save();
+      c.globalCompositeOperation = 'lighter';
+      glow(c, X + 7, Y, 10 + k * 14, pal.accent, 0.3 + k * 0.4);
+      c.restore();
+      break;
+    }
+    case 'vent': {
+      const cyc = pr.t % pr.phase;
+      const warn = cyc < 0.9;
+      const active = cyc >= 0.9 && cyc < 1.6;
+      rect(c, X - 1, Y, 12, 2, '#2a3040');
+      for (let i = 0; i < 4; i++) rect(c, X + 1 + i * 2, Y, 1, 2, '#0c0e14');
+      rect(c, X - 1, Y, 12, 1, warn ? (Math.floor(t * 14) % 2 ? '#ff4a5a' : '#ffcf3a') : '#5a6480');
+      if (active) {
+        // scalding column of steam
+        c.save();
+        c.globalCompositeOperation = 'lighter';
+        const gr = c.createLinearGradient(0, Y - 46, 0, Y);
+        gr.addColorStop(0, 'rgba(200,210,230,0)');
+        gr.addColorStop(1, 'rgba(220,230,250,0.35)');
+        c.fillStyle = gr;
+        c.fillRect(X - 2, Y - 46, 14, 46);
+        for (let i = 0; i < 6; i++) {
+          const yy = Y - ((t * 120 + i * 9) % 46);
+          rect(c, X + 1 + Math.sin(t * 9 + i) * 3, yy, 3, 3, 'rgba(255,255,255,0.25)');
+        }
+        c.restore();
+      }
+      break;
+    }
+    case 'crumble': {
+      if (pr.state === 'gone') {
+        // faint outline where the walkway will re-form
+        c.save();
+        c.globalAlpha = 0.15 + Math.min(0.35, (pr.t / 2.6) * 0.35);
+        for (let x = 0; x < pr.w; x += 3) px(c, X + x, Y + 1, pal.accent);
+        c.restore();
+        return;
+      }
+      const shake = pr.state === 'shake' ? Math.round(Math.sin(t * 80) * 1) : 0;
+      const col = area === 1 ? '#3a4a3a' : area === 4 ? '#3a2a4a' : '#4a3a4a';
+      for (let x = 0; x < pr.w; x += 8) {
+        const o = pr.state === 'shake' ? Math.round(Math.sin(t * 60 + x) * 1) : 0;
+        rect(c, X + x + shake, Y + o, 8, 5, col);
+        rect(c, X + x + shake, Y + o, 8, 1, shade(col, 40));
+        rect(c, X + x + 7 + shake, Y + o, 1, 5, shade(col, -30));
+        px(c, X + x + 3 + shake, Y + 2 + o, shade(col, -25));
+      }
+      // cracks
+      line(c, X + 5 + shake, Y + 1, X + 9 + shake, Y + 4, '#14101a');
+      line(c, X + pr.w - 9 + shake, Y + 1, X + pr.w - 5 + shake, Y + 4, '#14101a');
+      if (pr.state === 'shake') for (let i = 0; i < 3; i++) px(c, X + ((t * 97 + i * 13) % pr.w), Y + 5 + ((t * 60 + i * 7) % 6), shade(col, 20));
+      break;
+    }
+  }
+}
+
+/** Telegraph marker on the floor (e.g. where the acid rain will land). */
+export function drawMarker(c: Ctx, x: number, y: number, w: number, h: number, k: number, t: number) {
+  c.save();
+  c.globalCompositeOperation = 'lighter';
+  const a = 0.25 + k * 0.5;
+  rect(c, x, y + h - 2, w, 2, rgba('#7dff4a', a));
+  if (Math.floor(t * 14) % 2 === 0) {
+    rect(c, x, y + h - 4, 1, 4, rgba('#d8ffe6', a));
+    rect(c, x + w - 1, y + h - 4, 1, 4, rgba('#d8ffe6', a));
+  }
+  glow(c, x + w / 2, y + h, w * 0.7, '#7dff4a', 0.15 + k * 0.25);
+  c.restore();
 }

@@ -348,7 +348,7 @@ test('a long simulated expedition never throws (bot plays with god mode)', () =>
     g.player.hp = g.player.maxHp;
     if (g.pendingChoice) g.choose(g.pendingChoice.options[0]);
     // kill the room quickly and walk to the door
-    if (i % 30 === 0) for (const e of g.enemies) if (!e.dead && e.type !== 'boss') g.hitEnemy(e, 999, 1, 0, 'melee');
+    if (i % 30 === 0) for (const e of g.enemies) if (!e.dead && e.type !== 'boss') g.hitEnemy(e, 999, 1, 0, 'special');
     const b = g.boss();
     if (b && !b.dead && i % 20 === 0) g.hitEnemy(b, 120, 1, 0, 'melee');
     if (!g.doorLocked && i % 10 === 0) {

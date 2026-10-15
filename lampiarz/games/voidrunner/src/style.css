@@ -192,3 +192,13 @@ button { font: inherit; color: inherit; }
   .panel h2 { font-size: 24px; }
   .title-screen { padding: 8vh 6vw; background: rgba(3, 4, 9, 0.7); }
 }
+
+/* combo counter (right edge, under the sector info) */
+.combo { position: absolute; right: 14px; top: 78px; text-align: right; opacity: 0; transform: translateX(8px); transition: opacity 0.2s, transform 0.2s; pointer-events: none; --combo-col: #3ee6ff; }
+.combo.on { opacity: 1; transform: none; }
+.combo b { display: block; font-family: 'Heros Cn', 'Arial Narrow', sans-serif; font-size: 30px; line-height: 1; color: var(--combo-col); text-shadow: 0 0 12px var(--combo-col), 0 2px 0 #000; letter-spacing: 1px; }
+.combo span { display: block; font-size: 10px; letter-spacing: 3px; color: rgba(255, 255, 255, 0.7); margin-top: 2px; }
+.combo i { display: block; width: 70px; height: 3px; margin: 4px 0 0 auto; background: rgba(255, 255, 255, 0.12); }
+.combo u { display: block; height: 100%; background: var(--combo-col); box-shadow: 0 0 6px var(--combo-col); }
+.combo.pop b { animation: comboPop 0.25s ease-out; }
+@keyframes comboPop { 0% { transform: scale(1.5); } 100% { transform: scale(1); } }

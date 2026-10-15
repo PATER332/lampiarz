@@ -60,6 +60,7 @@ export class App {
     this.game = new Game(this.meta, this.audio, this.input);
     this.audio.apply(this.meta.settings);
     this.renderer.shakeOn = this.meta.settings.shake;
+    this.renderer.bloomOn = this.meta.settings.effects;
     const unlock = () => this.audio.unlock();
     window.addEventListener('pointerdown', unlock);
     window.addEventListener('keydown', unlock);
@@ -257,6 +258,7 @@ export class App {
     const boss = g.boss();
     const ups = (Object.keys(g.run.upgrades) as UpgradeId[]).filter((id) => g.up(id) > 0);
     const w = WEAPONS[g.weapon];
+    this.updateCombo(g);
     const key = [Math.ceil(p.hp), p.maxHp, Math.floor(p.energy), p.healCharges, g.run.fragments, g.run.area, g.run.room, ups.map((u) => u + g.up(u)).join(), boss ? Math.ceil(boss.hp) + ':' + boss.phase : '', g.weapon, this.ghostHp.toFixed(2)].join('|');
     if (key === this.hudCache) return;
     this.hudCache = key;
@@ -293,6 +295,37 @@ export class App {
     if (this.dialogEl) this.hud.appendChild(this.dialogEl);
     if (this.signEl) this.hud.appendChild(this.signEl);
     for (const b of this.banners) this.hud.appendChild(b);
+    if (this.comboEl) this.hud.appendChild(this.comboEl);
+  }
+
+  /** Combo counter: a persistent element updated in place every frame (no HUD rebuild). */
+  private comboEl: HTMLElement | null = null;
+  private comboShown = 0;
+  private updateCombo(g: Game) {
+    const n = g.run.combo;
+    if (!this.comboEl) {
+      this.comboEl = document.createElement('div');
+      this.comboEl.className = 'combo';
+      this.comboEl.innerHTML = '<b></b><span>SERIA</span><i><u></u></i>';
+      this.hud.appendChild(this.comboEl);
+    }
+    const el = this.comboEl;
+    if (!el.isConnected) this.hud.appendChild(el);
+    const show = n >= 3;
+    el.classList.toggle('on', show);
+    if (!show) {
+      this.comboShown = 0;
+      return;
+    }
+    if (n !== this.comboShown) {
+      this.comboShown = n;
+      (el.firstElementChild as HTMLElement).textContent = `×${n}`;
+      el.classList.remove('pop');
+      void el.offsetWidth;
+      el.classList.add('pop');
+      el.style.setProperty('--combo-col', n >= 30 ? '#ff3d5e' : n >= 20 ? '#ffb23e' : n >= 10 ? '#ffe066' : '#3ee6ff');
+    }
+    (el.querySelector('u') as HTMLElement).style.width = `${Math.max(0, Math.min(1, g.run.comboT / 2.4)) * 100}%`;
   }
 
   private banners: HTMLElement[] = [];
@@ -563,6 +596,7 @@ export class App {
       ${slider('sfx', 'Efekty')}
       <div class="set-row"><span>Wstrząsy ekranu</span><span></span><button class="toggle ${s.shake ? 'on' : ''}" data-act="toggle" data-id="shake">${s.shake ? 'WŁ.' : 'WYŁ.'}</button></div>
       <div class="set-row"><span>Liczby obrażeń</span><span></span><button class="toggle ${s.damageNumbers ? 'on' : ''}" data-act="toggle" data-id="damageNumbers">${s.damageNumbers ? 'WŁ.' : 'WYŁ.'}</button></div>
+      <div class="set-row"><span>Efekty graficzne (poświata, pierwszy plan)</span><span></span><button class="toggle ${s.effects ? 'on' : ''}" data-act="toggle" data-id="effects">${s.effects ? 'WŁ.' : 'WYŁ.'}</button></div>
       <div class="set-row"><span>Przyciski dotykowe</span><span></span><button class="toggle on" data-act="touchmode">${s.touch === 'auto' ? 'AUTO' : s.touch === 'on' ? 'WŁ.' : 'WYŁ.'}</button></div>
       ${this.mode !== 'play' ? `<div class="set-row"><span>Postęp</span><span></span><button class="toggle" data-act="reset">RESETUJ</button></div><div class="confirm-slot"></div>` : ''}
       <div class="row" style="margin-top:14px"><button class="btn primary" data-act="close">Gotowe</button></div>
@@ -579,7 +613,8 @@ export class App {
       <h2>Sterowanie</h2>
       <p class="lead">${guide ? 'Pierwsza wyprawa. Tak sterujesz cyborgiem — w pierwszym pomieszczeniu tablice przypomną ci najważniejsze ruchy.' : 'Kliknij klawisz, żeby go zmienić (potem naciśnij nowy; Esc anuluje).'}</p>
       <div class="keys-table">${rows}</div>
-      <p class="hint">W powietrzu SPACJA = podwójny skok. Przytrzymaj J i puść = atak naładowany. Zryw (SHIFT) daje chwilę nietykalności.</p>
+      <p class="hint">W powietrzu SPACJA = podwójny skok. Przytrzymaj J i puść = atak naładowany. Zryw (SHIFT) daje chwilę nietykalności — zryw tuż przed trafieniem to <b>perfekcyjny unik</b> (spowolnienie czasu, energia i mocniejsza kontra).</p>
+      <p class="hint">Przy ścianie: dociśnij kierunek, żeby się zsuwać, SPACJA = odbicie od ściany. W powietrzu ↓ + J = cięcie w dół (odbija od wrogów, skrzyń i kolców), ↑ + J = cięcie w górę. Tarczownika atakuj od tyłu albo przełam gardę atakiem naładowanym. Kolejne trafienia bez otrzymania obrażeń budują serię (co 10 — bonusowe Fragmenty).</p>
       <div class="row" style="margin-top:14px">
         ${guide ? '<button class="btn primary" data-act="close">Zaczynamy</button>' : '<button class="btn" data-act="defaultkeys">Przywróć domyślne</button><button class="btn primary" data-act="close">Gotowe</button>'}
       </div></div></div>`;
@@ -731,9 +766,11 @@ export class App {
         break;
       }
       case 'toggle': {
-        const k = id as 'shake' | 'damageNumbers';
+        const k = id as 'shake' | 'damageNumbers' | 'effects';
         this.meta.settings[k] = !this.meta.settings[k];
         this.renderer.shakeOn = this.meta.settings.shake;
+        this.renderer.bloomOn = this.meta.settings.effects;
+    this.renderer.bloomOn = this.meta.settings.effects;
         this.saveMeta();
         this.renderOverlay();
         break;

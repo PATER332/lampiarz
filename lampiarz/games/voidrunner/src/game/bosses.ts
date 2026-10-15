@@ -55,6 +55,16 @@ export function updateBoss(g: Game, e: Enemy, dt: number) {
     g.events.push({ type: 'toast', text: 'Strażnik wpada w szał!', color: '#ff4a5a' });
     setState(e, e.boss === 'matka' ? 'idle' : 'hover');
     e.cd = 0.8;
+    if (e.boss === 'straznik' && newPhase === 3) {
+      // the guardian calls in two security drones
+      for (const d of [-1, 1]) {
+        const dr = makeEnemy(g, 'drone', e.x + e.w / 2 + d * 50, e.y, false);
+        dr.homeX = dr.x;
+        dr.homeY = dr.y;
+        dr.state = 'chase';
+        g.enemies.push(dr);
+      }
+    }
   }
   if (e.boss === 'matka') matka(g, e, dt);
   else if (e.boss === 'straznik') straznik(g, e, dt);
@@ -76,6 +86,7 @@ function matka(g: Game, e: Enemy, dt: number) {
         const larvae = g.enemies.filter((o) => o.type === 'larva' && !o.dead).length;
         const r = Math.random();
         if (r < 0.2 && larvae < 3) setState(e, 'spawn');
+        else if (e.phase >= 2 && r < 0.42) setState(e, 'acidRain');
         else if (r < 0.6) setState(e, 'spitTell');
         else setState(e, 'leapTell');
         g.audio.play('telegraph');
@@ -124,6 +135,28 @@ function matka(g: Game, e: Enemy, dt: number) {
           e.m = 0;
           setState(e, 'rest');
         }
+      }
+      break;
+    case 'acidRain':
+      // the ceiling drips: the floor markers show where acid will land
+      e.vx *= 0.8;
+      if (e.stateT < dt * 1.5) {
+        const xs = [pc.x];
+        for (let i = 0; i < 4; i++) xs.push(TILE * 2 + Math.random() * (g.grid.w - 4) * TILE);
+        e.aimX = undefined;
+        for (const x of xs) {
+          g.hazards.push({ kind: 'marker', x: x - 9, y: floorY(g) - 3, w: 18, h: 3, t: 0, warn: 0.9, active: 0, dmg: 0 });
+          g.addProjectile({ x, y: TILE * 1.5, vx: 0, vy: 0, r: 5, dmg: 14, owner: 'enemy', kind: 'acid', life: 4, pierce: false, gravity: 0 });
+        }
+        g.audio.play('bossRoar');
+      }
+      if (e.stateT > 0.75 && !e.n) {
+        e.n = 1;
+        for (const pr of g.projectiles) if (pr.kind === 'acid' && pr.vy === 0 && pr.gravity === 0) pr.gravity = 700;
+      }
+      if (e.stateT > 1.6) {
+        e.n = 0;
+        setState(e, 'rest');
       }
       break;
     case 'spawn':
@@ -316,7 +349,7 @@ function serce(g: Game, e: Enemy, dt: number) {
       e.state = 'hover';
       if (e.cd <= 0) {
         const opts = ['tentacles', 'sweep', 'orbs'];
-        if (e.phase >= 2) opts.push('summon');
+        if (e.phase >= 2) opts.push('summon', 'nova');
         const pick = opts[Math.floor(Math.random() * opts.length)];
         const voids = g.enemies.filter((o) => o.type === 'void' && !o.dead).length;
         setState(e, pick === 'summon' && voids >= 2 ? 'orbs' : pick);
@@ -372,6 +405,24 @@ function serce(g: Game, e: Enemy, dt: number) {
       if (e.stateT > 1.4) {
         e.m = 0;
         end(e, 1.1 * k);
+      }
+      break;
+    case 'nova':
+      // an expanding ring of orbs with one gap — find it and stand there
+      if (e.stateT > 0.6 * k && !e.m) {
+        e.m = 1;
+        const n = 22;
+        const gap = Math.floor(Math.random() * n);
+        for (let i = 0; i < n; i++) {
+          if (Math.abs(i - gap) <= 1 || Math.abs(i - gap) >= n - 1) continue;
+          const a = (i / n) * Math.PI * 2;
+          g.addProjectile({ x: ex, y: ey, vx: Math.cos(a) * 85, vy: Math.sin(a) * 85, r: 5, dmg: 14, owner: 'enemy', kind: 'orb', life: 5, pierce: false, gravity: 0 });
+        }
+        g.audio.play('bossRoar');
+      }
+      if (e.stateT > 1.6 * k) {
+        e.m = 0;
+        end(e, 0.9 * k);
       }
       break;
     case 'tired':

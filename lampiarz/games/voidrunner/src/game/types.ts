@@ -3,10 +3,10 @@ import type { ObjectKind } from '../world/expedition';
 import type { Body } from '../world/physics';
 import type { UpgradeId } from './data';
 
-export type PlayerAnim = 'idle' | 'run' | 'jump' | 'fall' | 'land' | 'attack' | 'charge' | 'chargeAtk' | 'dash' | 'hurt' | 'dead' | 'interact' | 'victory' | 'special' | 'heal';
+export type PlayerAnim = 'wall' | 'idle' | 'run' | 'jump' | 'fall' | 'land' | 'attack' | 'charge' | 'chargeAtk' | 'dash' | 'hurt' | 'dead' | 'interact' | 'victory' | 'special' | 'heal';
 
 export interface AttackState {
-  kind: 'combo' | 'charged' | 'special' | 'shot';
+  kind: 'combo' | 'charged' | 'special' | 'shot' | 'down' | 'up';
   step: number;
   t: number;
   dur: number;
@@ -45,11 +45,20 @@ export interface Player extends Body {
   fallSpeed: number;
   stepT: number;
   reactorFx: number;
+  wallDir: -1 | 0 | 1;
+  wallCoyote: number;
+  wallLock: number;
+  sliding: boolean;
+  dashGrace: number;
+  dodgeUsed: boolean;
+  counterT: number;
 }
 
 export interface Enemy extends Body {
   id: number;
   type: EnemyType | 'larva' | 'boss';
+  /** shield bearers block hits from the front */
+  guard?: boolean;
   boss?: BossType;
   elite: boolean;
   hp: number;
@@ -95,7 +104,7 @@ export interface Projectile {
 }
 
 export interface Hazard {
-  kind: 'laser' | 'beam' | 'acidPool' | 'shockwave' | 'spikes' | 'mine' | 'hline';
+  kind: 'laser' | 'beam' | 'acidPool' | 'shockwave' | 'spikes' | 'mine' | 'hline' | 'marker';
   x: number;
   y: number;
   w: number;
@@ -162,6 +171,20 @@ export interface Bolt {
   t: number;
 }
 
+export interface Prop {
+  id: number;
+  kind: 'crate' | 'barrel' | 'pad' | 'vent' | 'crumble';
+  x: number; // pixels, top-left
+  y: number;
+  w: number;
+  h: number;
+  hp: number;
+  t: number;
+  state: 'idle' | 'lit' | 'gone' | 'shake';
+  phase: number;
+  tiles?: number[]; // crumble: tile indices
+}
+
 export interface RunState {
   seed: number;
   area: number;
@@ -172,6 +195,10 @@ export interface RunState {
   bosses: number;
   time: number;
   damageDealt: number;
+  combo: number;
+  comboT: number;
+  bestCombo: number;
+  perfect: number;
 }
 
 export type GameEvent =

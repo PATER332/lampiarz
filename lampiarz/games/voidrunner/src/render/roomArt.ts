@@ -15,14 +15,27 @@ export interface Light {
   a: number;
 }
 
+/** Small animated details layered over the pre-rendered room every frame. */
+export interface Anim {
+  kind: 'shaft' | 'drip' | 'led' | 'fan' | 'neon' | 'screen' | 'arc' | 'bulb' | 'steam';
+  x: number;
+  y: number;
+  h: number; // shaft length / drip fall distance / size
+  color: string;
+  ph: number; // phase offset
+}
+
 export interface RoomArt {
   back: HTMLCanvasElement; // drawn behind entities
   front: HTMLCanvasElement; // tiles
   lights: Light[];
   hazards: { x: number; y: number }[]; // animated hazard tiles (pixels, top-left)
+  anims: Anim[];
 }
 
-export function renderRoom(grid: RoomGrid, area: number, seed: number): RoomArt {
+let anims: Anim[] = [];
+
+export function renderRoom(grid: RoomGrid, area: number, seed: number, skip: Set<number> = new Set()): RoomArt {
   const pal = AREAS[area].palette;
   const W = grid.w * TILE;
   const H = grid.h * TILE;
@@ -31,11 +44,44 @@ export function renderRoom(grid: RoomGrid, area: number, seed: number): RoomArt 
   const r = seeded(seed);
   const lights: Light[] = [];
   const hazards: { x: number; y: number }[] = [];
-  const t = (x: number, y: number) => (x < 0 || y < 0 || x >= grid.w || y >= grid.h ? T_SOLID : grid.tiles[y * grid.w + x]);
+  const t = (x: number, y: number) => (x < 0 || y < 0 || x >= grid.w || y >= grid.h ? T_SOLID : skip.has(y * grid.w + x) ? T_EMPTY : grid.tiles[y * grid.w + x]);
   const solid = (x: number, y: number) => t(x, y) === T_SOLID || t(x, y) === T_BREAK;
+  anims = [];
+  /** distance (px) from a point down to the next floor */
+  const fallTo = (px0: number, py0: number) => {
+    const tx = Math.floor(px0 / TILE);
+    for (let ty = Math.floor(py0 / TILE) + 1; ty < grid.h; ty++) if (t(tx, ty) !== T_EMPTY) return ty * TILE - py0;
+    return H - py0;
+  };
 
   // ---------------------------------------------------------------- back wall (behind everything)
   backWall(bc, grid, area, r, lights);
+  // wall fans and status LEDs on the back wall
+  for (let i = 0; i < Math.max(1, grid.w / 18); i++) {
+    const x = 2 + Math.floor(r() * (grid.w - 4));
+    const y = 2 + Math.floor(r() * (grid.h - 5));
+    if (t(x, y) !== T_EMPTY || t(x + 1, y) !== T_EMPTY || t(x, y + 1) !== T_EMPTY) continue;
+    if (area === 1 || area === 4) continue;
+    const X = x * TILE + 8;
+    const Y = y * TILE + 8;
+    bc.fillStyle = '#10131c';
+    bc.beginPath();
+    bc.arc(X, Y, 8, 0, Math.PI * 2);
+    bc.fill();
+    bc.strokeStyle = '#3a4256';
+    bc.lineWidth = 1;
+    bc.stroke();
+    anims.push({ kind: 'fan', x: X, y: Y, h: 7, color: '#3a4256', ph: r() * 6 });
+  }
+  for (let i = 0; i < grid.w / 6; i++) {
+    const x = Math.floor(r() * grid.w);
+    const y = Math.floor(r() * grid.h);
+    if (t(x, y) !== T_EMPTY) continue;
+    const X = x * TILE + Math.floor(r() * 12) + 2;
+    const Y = y * TILE + Math.floor(r() * 12) + 2;
+    rect(bc, X - 1, Y - 1, 4, 3, '#151924');
+    anims.push({ kind: 'led', x: X, y: Y, h: 2, color: r() < 0.6 ? (area === 1 ? '#7dff4a' : area === 4 ? pal.accent : '#ff4a5a') : '#5dff9b', ph: r() * 10 });
+  }
 
   // ---------------------------------------------------------------- tiles
   for (let y = 0; y < grid.h; y++)
@@ -46,6 +92,62 @@ export function renderRoom(grid: RoomGrid, area: number, seed: number): RoomArt 
       if (k === T_SOLID || k === T_BREAK) solidTile(c, x, y, X, Y, area, k === T_BREAK, solid, r);
       else if (k === T_PLATFORM) platformTile(c, X, Y, area, t(x - 1, y) !== T_PLATFORM, t(x + 1, y) !== T_PLATFORM, solid(x, y + 1));
       else if (k === T_HAZARD) hazards.push({ x: X, y: Y });
+    }
+
+  // ---------------------------------------------------------------- ambient occlusion on the back wall:
+  // open cells right under a ceiling or next to a wall get a soft shadow, which gives the room depth
+  for (let y = 0; y < grid.h; y++)
+    for (let x = 0; x < grid.w; x++) {
+      if (t(x, y) === T_SOLID || t(x, y) === T_BREAK) continue;
+      const X = x * TILE;
+      const Y = y * TILE;
+      if (solid(x, y - 1)) {
+        const g0 = bc.createLinearGradient(0, Y, 0, Y + 12);
+        g0.addColorStop(0, 'rgba(0,0,0,0.45)');
+        g0.addColorStop(1, 'rgba(0,0,0,0)');
+        bc.fillStyle = g0;
+        bc.fillRect(X, Y, TILE, 12);
+      }
+      if (solid(x - 1, y)) {
+        const g1 = bc.createLinearGradient(X, 0, X + 8, 0);
+        g1.addColorStop(0, 'rgba(0,0,0,0.35)');
+        g1.addColorStop(1, 'rgba(0,0,0,0)');
+        bc.fillStyle = g1;
+        bc.fillRect(X, Y, 8, TILE);
+      }
+      if (solid(x + 1, y)) {
+        const g2 = bc.createLinearGradient(X + TILE, 0, X + TILE - 8, 0);
+        g2.addColorStop(0, 'rgba(0,0,0,0.35)');
+        g2.addColorStop(1, 'rgba(0,0,0,0)');
+        bc.fillStyle = g2;
+        bc.fillRect(X + TILE - 8, Y, 8, TILE);
+      }
+      if (solid(x, y + 1) && t(x, y) === T_EMPTY) {
+        // floor contact shadow + small rubble on top of the floor edge
+        rect(bc, X, Y + TILE - 2, TILE, 2, 'rgba(0,0,0,0.25)');
+        if (r() < 0.35) {
+          const n = 1 + Math.floor(r() * 3);
+          for (let k = 0; k < n; k++) {
+            const rx = X + Math.floor(r() * 14);
+            const rw = 1 + Math.floor(r() * 2);
+            rect(c, rx, Y + TILE - rw, rw, rw, shade(pal.wallHi, r() < 0.5 ? -10 : 15));
+          }
+        }
+        if (area === 2 && r() < 0.06) {
+          // puddle reflecting the neon
+          rect(c, X + 2, Y + TILE - 1, 10, 1, rgba(pal.accent, 0.35));
+          rect(c, X + 4, Y + TILE - 1, 3, 1, rgba('#ffffff', 0.25));
+        }
+      }
+      // cobwebs / roots in upper inner corners
+      if (solid(x, y - 1) && (solid(x - 1, y) || solid(x + 1, y)) && r() < 0.5) {
+        const left = solid(x - 1, y);
+        const ox = left ? X : X + TILE;
+        const d = left ? 1 : -1;
+        const wc = area === 1 ? 'rgba(63,143,74,0.45)' : area === 4 ? 'rgba(196,92,255,0.25)' : 'rgba(200,210,230,0.18)';
+        for (let k = 0; k < 4; k++) line(bc, ox, Y + k * 3, ox + d * (10 - k * 2), Y, wc);
+        line(bc, ox, Y + 9, ox + d * 9, Y, wc);
+      }
     }
 
   // ---------------------------------------------------------------- props on floors, walls and ceilings
@@ -67,7 +169,9 @@ export function renderRoom(grid: RoomGrid, area: number, seed: number): RoomArt 
   c.fillStyle = g;
   c.fillRect(0, 0, W, H);
   c.globalCompositeOperation = 'source-over';
-  return { back, front, lights, hazards };
+  // drips fall from stalactites / growths to the floor below; shafts reach the floor
+  for (const a of anims) if (a.kind === 'drip' || a.kind === 'shaft') a.h = Math.min(a.kind === 'shaft' ? 120 : 400, fallTo(a.x, a.y));
+  return { back, front, lights, hazards, anims };
 }
 
 // ------------------------------------------------------------------ back wall
@@ -278,6 +382,7 @@ function floorProp(c: Ctx, X: number, Y: number, area: number, r: () => number, 
       rect(c, X + 4, Y - 5, 2, 1, '#ff4a5a');
       rect(c, X + 8, Y - 5, 2, 1, '#5dff9b');
       lights.push({ x: X + 8, y: Y - 10, r: 26, color: pal.accent, flicker: 0.15, a: 0.35 });
+      anims.push({ kind: 'screen', x: X + 4, y: Y - 12, h: 5, color: pal.accent, ph: r() * 10 });
     } else if (k < 0.75) {
       // broken robot arm / debris
       rect(c, X + 2, Y - 4, 10, 4, metal);
@@ -330,6 +435,7 @@ function floorProp(c: Ctx, X: number, Y: number, area: number, r: () => number, 
       for (let i = 0; i < 4; i++) rect(c, X + 4, Y - 19 + i * 3, 6, 1, rgba('#ffffff', 0.4));
       rect(c, X + 12, Y - 18, 2, 6, '#1a1220');
       lights.push({ x: X + 8, y: Y - 14, r: 30, color: pal.accent, flicker: 0.1, a: 0.4 });
+      anims.push({ kind: 'screen', x: X + 3, y: Y - 20, h: 12, color: pal.accent, ph: r() * 10 });
     } else if (k < 0.75) {
       // trash and a bench
       rect(c, X + 1, Y - 6, 14, 2, '#3a3048');
@@ -346,6 +452,7 @@ function floorProp(c: Ctx, X: number, Y: number, area: number, r: () => number, 
       for (let i = 0; i < 6; i++) rect(c, X + 3, Y - 16 + i * 3, 10, 1, '#b07a3a');
       rect(c, X + 6, Y - 22, 4, 4, rgba(pal.accent, 0.9));
       lights.push({ x: X + 8, y: Y - 20, r: 34, color: pal.accent, flicker: 0.25, a: 0.5 });
+      anims.push({ kind: 'arc', x: X + 8, y: Y - 20, h: 10, color: pal.accent, ph: r() * 10 });
     } else if (k < 0.7) {
       // warning sign
       rect(c, X + 7, Y - 14, 2, 14, metal);
@@ -399,18 +506,23 @@ function ceilingProp(c: Ctx, X: number, Y: number, area: number, r: () => number
     if (area !== 1 && r() < 0.3) {
       px(c, X + 8 + sway, Y + len, '#ffe066');
       lights.push({ x: X + 8 + sway, y: Y + len, r: 14, color: '#ffe066', flicker: 0.6, a: 0.35 });
+      anims.push({ kind: 'bulb', x: X + 8 + sway, y: Y + len, h: 1, color: '#ffe066', ph: r() * 10 });
     }
   } else if (k < 0.6) {
     // ceiling lamp
     rect(c, X + 3, Y, 10, 3, '#2a3040');
     rect(c, X + 4, Y + 3, 8, 1, area === 2 ? '#ffcf8a' : area === 4 ? pal.accent : '#cfe8ff');
-    lights.push({ x: X + 8, y: Y + 6, r: 52, color: area === 2 ? '#ffcf8a' : area === 4 ? pal.accent : '#9fd8ff', flicker: r() < 0.25 ? 0.5 : 0.04, a: 0.5 });
+    const lampCol = area === 2 ? '#ffcf8a' : area === 4 ? pal.accent : '#9fd8ff';
+    const flick = r() < 0.25 ? 0.5 : 0.04;
+    lights.push({ x: X + 8, y: Y + 6, r: 52, color: lampCol, flicker: flick, a: 0.5 });
+    anims.push({ kind: 'shaft', x: X + 8, y: Y + 4, h: 100, color: lampCol, ph: flick > 0.1 ? 1 + r() * 10 : 0 });
   } else if (area === 1 || area === 4) {
     // dripping growth / stalactites
     for (let i = 0; i < 3; i++) {
       const h = 3 + r() * 9;
       rect(c, X + 3 + i * 4, Y, 2, h, area === 1 ? '#2d5a3a' : '#2a1a35');
       px(c, X + 3 + i * 4, Y + h, area === 1 ? pal.accent : pal.accent);
+      if (i === 1 || r() < 0.3) anims.push({ kind: 'drip', x: X + 3 + i * 4, y: Y + h + 1, h: 100, color: pal.accent, ph: r() * 10 });
     }
   } else {
     // pipe bracket
@@ -428,9 +540,11 @@ function wallProp(c: Ctx, X: number, Y: number, area: number, side: number, r: (
     rect(c, wx, Y + 2, 6, 12, '#1a1220');
     for (let i = 0; i < 3; i++) rect(c, wx + 1, Y + 4 + i * 3, 4, 1, col);
     lights.push({ x: wx + 3, y: Y + 8, r: 30, color: col, flicker: 0.12, a: 0.45 });
+    anims.push({ kind: 'neon', x: wx + 1, y: Y + 4, h: 3, color: col, ph: r() * 10 });
   } else {
     rect(c, wx, Y + 4, 6, 6, '#2a3040');
     rect(c, wx + 1, Y + 5, 4, 4, rgba(area === 1 ? '#7dff4a' : area === 4 ? pal.accent : '#ff4a5a', 0.85));
     lights.push({ x: wx + 3, y: Y + 7, r: 20, color: area === 1 ? '#7dff4a' : area === 4 ? pal.accent : '#ff4a5a', flicker: 0.5, a: 0.3 });
+    anims.push({ kind: 'led', x: wx + 2, y: Y + 6, h: 2, color: area === 1 ? '#7dff4a' : area === 4 ? pal.accent : '#ff4a5a', ph: r() * 10 });
   }
 }

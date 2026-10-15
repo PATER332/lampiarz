@@ -12,6 +12,8 @@ export interface Settings {
   sfx: number;
   shake: boolean;
   damageNumbers: boolean;
+  /** bloom, scanlines and foreground silhouettes */
+  effects: boolean;
   touch: 'auto' | 'on' | 'off';
 }
 
@@ -47,7 +49,7 @@ export interface RunSave {
   savedAt: number;
 }
 
-export const defaultSettings = (): Settings => ({ master: 0.8, music: 0.5, sfx: 0.8, shake: true, damageNumbers: true, touch: 'auto' });
+export const defaultSettings = (): Settings => ({ master: 0.8, music: 0.5, sfx: 0.8, shake: true, damageNumbers: true, effects: true, touch: 'auto' });
 
 export function newMeta(): Meta {
   return {

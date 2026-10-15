@@ -7,6 +7,8 @@ import { makeCanvas, rect, rgba, seeded, shade, type Ctx, glow, line, px } from 
 export interface BgSet {
   sky: HTMLCanvasElement;
   layers: { cv: HTMLCanvasElement; factor: number; y: number }[];
+  /** dark silhouettes in front of everything (top and bottom edges only), parallax > 1 */
+  fore: HTMLCanvasElement;
 }
 
 const LW = 960; // layer width (tiles horizontally)
@@ -44,8 +46,11 @@ function build(area: number): BgSet {
   [farLayer, farLayer, farLayer, farLayer, farLayer][area](far[1], area, r);
   midLayer(mid[1], area, r);
   nearLayer(near[1], area, r);
+  const fore = makeCanvas(LW, VIEW_H);
+  foreLayer(fore[1], area, r);
   return {
     sky,
+    fore: fore[0],
     layers: [
       { cv: far[0], factor: 0.12, y: 0 },
       { cv: mid[0], factor: 0.3, y: 0 },
@@ -247,5 +252,72 @@ function nearLayer(c: Ctx, area: number, r: () => number) {
       const t = (x - x0) / (x1 - x0);
       px(c, x, 4 * t * (1 - t) * sag + 2, col);
     }
+  }
+}
+
+/** Foreground: hanging chains, cables, pipes and girders along the top edge and a few low
+ * silhouettes along the bottom. Very dark, kept to the screen edges so it never hides the action. */
+function foreLayer(c: Ctx, area: number, r: () => number) {
+  const pal = AREAS[area].palette;
+  const ink = '#030409';
+  const rim = rgba(pal.accent, 0.18);
+  let x = 20 + r() * 60;
+  while (x < LW - 40) {
+    const k = r();
+    if (area === 1 || area === 4) {
+      // organic tendrils / roots hanging from above
+      const n = 2 + Math.floor(r() * 3);
+      for (let i = 0; i < n; i++) {
+        let tx = x + i * 5 + r() * 4;
+        const len = 14 + r() * 34;
+        for (let y = 0; y < len; y++) {
+          tx += Math.sin(y * 0.25 + i) * 0.5;
+          const w = Math.max(1, 3 - y / 14);
+          rect(c, tx, y, w, 1, ink);
+        }
+        px(c, tx, len, area === 1 ? rgba('#7dff4a', 0.6) : rgba('#e04aff', 0.6));
+      }
+    } else if (k < 0.4) {
+      // chain or cable sagging between two points
+      const span = 40 + r() * 70;
+      const sag = 8 + r() * 18;
+      for (let i = 0; i <= span; i++) {
+        const y = Math.round(sag * Math.sin((i / span) * Math.PI));
+        rect(c, x + i, y, 1, 2, ink);
+        if (i % 4 === 0) px(c, x + i, y + 2, rim);
+      }
+      x += span;
+    } else if (k < 0.7) {
+      // girder corner
+      const w = 30 + r() * 50;
+      rect(c, x, 0, w, 7, ink);
+      for (let i = 0; i < w - 6; i += 8) line(c, x + i, 7, x + i + 6, 13, ink);
+      rect(c, x, 12, w, 2, ink);
+      rect(c, x, 6, w, 1, rim);
+      x += w;
+    } else {
+      // pipe dropping down with a bracket
+      const len = 12 + r() * 30;
+      rect(c, x, 0, 5, len, ink);
+      rect(c, x - 2, len, 9, 3, ink);
+      rect(c, x + 4, 0, 1, len, rim);
+    }
+    x += 50 + r() * 140;
+  }
+  // bottom: debris silhouettes
+  x = r() * 80;
+  while (x < LW - 30) {
+    const w = 10 + r() * 34;
+    const h = 4 + r() * 10;
+    c.fillStyle = ink;
+    c.beginPath();
+    c.moveTo(x, VIEW_H);
+    c.lineTo(x + w * 0.2, VIEW_H - h);
+    c.lineTo(x + w * 0.55, VIEW_H - h * 0.7);
+    c.lineTo(x + w * 0.8, VIEW_H - h * 1.1);
+    c.lineTo(x + w, VIEW_H);
+    c.fill();
+    if (area === 1 || area === 4) for (let i = 0; i < 4; i++) rect(c, x + r() * w, VIEW_H - h - 3 - r() * 6, 1, 6, ink);
+    x += w + 90 + r() * 200;
   }
 }

@@ -15,6 +15,7 @@ export const ENEMY_NAMES = {
   stalker: 'Prześladowca',
   void: 'Istota Pustki',
   larva: 'Larwa',
+  shield: 'Tarczownik',
   boss: '',
 } as const;
 
@@ -26,6 +27,7 @@ const DIMS: Record<string, [number, number, number, number]> = {
   stalker: [14, 22, 48, 115],
   void: [16, 16, 40, 95],
   larva: [10, 8, 12, 12],
+  shield: [16, 22, 60, 140],
 };
 
 export function makeEnemy(g: Game, type: Enemy['type'], x: number, y: number, elite: boolean): Enemy {
@@ -74,6 +76,7 @@ export function spawnEnemy(g: Game, pe: PlacedEnemy): Enemy {
   if (pe.type === 'turret' && pe.ceiling) y = pe.y * TILE;
   const e = makeEnemy(g, pe.type, x, y, pe.elite);
   e.ceiling = pe.ceiling;
+  if (pe.type === 'shield') e.guard = true;
   return e;
 }
 
@@ -136,10 +139,13 @@ export function updateEnemy(g: Game, e: Enemy, dt: number) {
     case 'void':
       voidCreature(g, e, dt, pc, ex, ey);
       break;
+    case 'shield':
+      shieldBearer(g, e, dt, pc, ex, ey);
+      break;
   }
   // contact damage only during real attacks
   if (e.hurtful > 0 && !p.dead && overlap(e, { x: p.x + 1, y: p.y + 2, w: p.w - 2, h: p.h - 2 })) {
-    const base = e.type === 'stalker' ? 18 : e.type === 'drone' ? 12 : e.type === 'larva' ? 8 : 12;
+    const base = e.type === 'stalker' ? 18 : e.type === 'shield' ? 16 : e.type === 'drone' ? 12 : e.type === 'larva' ? 8 : 12;
     g.damagePlayer(base * dmgScale(g, e), ex);
   }
 }
@@ -425,4 +431,59 @@ function voidCreature(g: Game, e: Enemy, dt: number, pc: V, ex: number, ey: numb
       break;
   }
   moveBody(e, dt, g.grid);
+}
+
+/** Tarczownik: walks behind a shield that blocks light hits from the front. It turns slowly —
+ * dash past it, hit it from behind, or break the guard with a charged / heavy / special attack. */
+function shieldBearer(g: Game, e: Enemy, dt: number, pc: V, ex: number, ey: number) {
+  const sees = g.sees(e, 210);
+  switch (e.state) {
+    case 'idle':
+    case 'guard': {
+      e.state = 'guard';
+      e.guard = true;
+      // slow turning: only re-faces the player every so often
+      e.n += dt;
+      if (e.n > (e.elite ? 0.45 : 0.7)) {
+        e.n = 0;
+        e.facing = pc.x < ex ? -1 : 1;
+      }
+      if (sees) {
+        const towards = Math.sign(pc.x - ex) === e.facing;
+        if (towards && Math.abs(pc.x - ex) > 22 && safeAhead(g, e, e.facing)) e.vx = e.facing * (e.elite ? 42 : 32);
+        else e.vx *= 0.8;
+        if (towards && Math.abs(pc.x - ex) < 36 && Math.abs(pc.y - ey) < 26 && e.cd <= 0) {
+          setState(e, 'bashTell');
+          e.vx = 0;
+          g.audio.play('telegraph');
+        }
+      } else e.vx *= 0.8;
+      break;
+    }
+    case 'bashTell':
+      e.vx = 0;
+      if (e.stateT > (e.elite ? 0.4 : 0.5)) {
+        setState(e, 'bash');
+        g.audio.play('swingHeavy');
+      }
+      break;
+    case 'bash':
+      e.hurtful = 0.05;
+      e.vx = e.facing * 230;
+      if (!safeAhead(g, e, e.facing)) e.vx = 0;
+      if (e.stateT > 0.2 || e.hitWall) {
+        setState(e, 'recover');
+        e.guard = false; // shield lowered after the bash: the opening
+      }
+      break;
+    case 'recover':
+      e.vx *= 0.8;
+      if (e.stateT > 0.85) {
+        e.cd = 1.2;
+        e.guard = true;
+        setState(e, 'guard');
+      }
+      break;
+  }
+  groundPhysics(g, e, dt);
 }

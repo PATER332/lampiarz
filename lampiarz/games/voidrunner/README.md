@@ -17,6 +17,9 @@ ustawienia, `voidrunner.run.v1` — wyprawa w ostatnim punkcie zapisu).
 | Q | nanoapteczka (leczenie) |
 | I | ekwipunek |
 | S + Spacja | zeskok z kładki |
+| ↓ + J (w powietrzu) | cięcie w dół — odbicie od wrogów, skrzyń i kolców („pogo”) |
+| ↑ + J | cięcie w górę |
+| kierunek do ściany + Spacja | ślizg po ścianie i odbicie od niej |
 | Esc | pauza |
 
 Na ekranach dotykowych pojawiają się przyciski (można je też włączyć/wyłączyć w Ustawieniach).
@@ -30,7 +33,12 @@ Na ekranach dotykowych pojawiają się przyciski (można je też włączyć/wył
   arena elit, arena bossa) w losowej kolejności i z losowym obsadzeniem — z ziarna wyprawy.
   Test `tests/world.test.ts` sprawdza dla każdego szablonu, że wyjście, punkty zapisu, ołtarze i skrytki
   są osiągalne.
-- **Wrogowie**: dron, łowca, wieżyczka, prześladowca, istota Pustki (+ odmiany elitarne). Każdy groźny atak
+- **Ruch i walka**: ślizg i odbicie od ścian, cięcia w dół („pogo”) i w górę, działo celuje też w pionie,
+  perfekcyjny unik (zryw tuż przed trafieniem → spowolnienie, energia, kontra ×1,6), licznik serii trafień
+  z nagrodami co 10 trafień.
+- **Elementy otoczenia**: skrzynie do rozbicia (Fragmenty, czasem zdrowie), wybuchowe beczki (ranią też gracza),
+  wyrzutnie skokowe, zawory pary z ostrzeżeniem, kruszące się kładki, które po chwili się odbudowują.
+- **Wrogowie**: dron, łowca, wieżyczka, prześladowca, istota Pustki, tarczownik (blokuje ciosy z przodu) (+ odmiany elitarne). Każdy groźny atak
   jest zapowiedziany (zamach, błysk, linia celownika, dźwięk); obrażenia przy dotyku tylko w trakcie ataku (wyjątek: małe larwy Matki Roju).
 - **Bossowie**: Matka Roju (kwas, skoki z falą uderzeniową, larwy), Strażnik Rdzenia (namierzające lasery,
   pierścienie kul, szarża), Serce Pustki (kolce spod ziemi, poziome promienie — przeskocz albo zostań nisko,
@@ -48,8 +56,10 @@ Na ekranach dotykowych pojawiają się przyciski (można je też włączyć/wył
 - `src/game/` — symulacja (stały krok 1/60 s): gracz, walka, wrogowie, bossowie, ulepszenia, przebieg wyprawy.
   Nie dotyka DOM, więc testy w Node sterują nią bezpośrednio.
 - `src/world/` — kafelki, fizyka (AABB z kładkami), szablony pomieszczeń, generator wypraw, sektory.
-- `src/render/` — renderer w buforze 480×270 skalowanym bez rozmycia: tła z paralaksą, wstępnie rysowane
-  pomieszczenia z detalami, sprite'y rysowane kodem, światło (warstwa ciemności z „dziurami” światła), cząsteczki.
+- `src/render/` — renderer w buforze 480×270 skalowanym bez rozmycia: tła z paralaksą i pierwszy plan,
+  wstępnie rysowane pomieszczenia z cieniowaniem (AO) i detalami, animowane detale (snopy światła, krople,
+  wentylatory, diody, neony, ekrany, łuki elektryczne, para), sprite'y rysowane kodem z obrysem i białym
+  błyskiem trafienia, światło (warstwa ciemności z „dziurami” światła), poświata (bloom), cząsteczki otoczenia.
 - `src/core/` — wejście (z możliwością zmiany klawiszy), dźwięk (Web Audio: efekty i muzyka generatywna), zapis.
 - `src/ui.ts` — menu, baza, HUD, pauza, ekwipunek, ustawienia, sterowanie, ekrany końca wyprawy, przyciski dotykowe.
 
