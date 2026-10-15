@@ -2,7 +2,7 @@
 // coordinates); the expedition builder later fills the slots (enemies, objects) per area.
 // All layouts are checked by tests/rooms.test.ts: the exit and every slot must be reachable.
 
-import type { Mark, MarkAt, RoomGrid } from './tiles';
+import type { Mark, MarkAt, RoomGrid, TrapAt } from './tiles';
 import { T_BREAK, T_EMPTY, T_HAZARD, T_PLATFORM, T_SOLID } from './tiles';
 
 export type RoomKind = 'start' | 'combat' | 'platform' | 'vertical' | 'arena' | 'boss' | 'treasure';
@@ -20,6 +20,7 @@ export interface RoomTemplate {
 export class Builder {
   tiles: Uint8Array;
   marks: MarkAt[] = [];
+  traps: TrapAt[] = [];
   constructor(
     public w: number,
     public h: number,
@@ -56,6 +57,31 @@ export class Builder {
     this.marks.push({ m, x, y, text });
     return this;
   }
+  /** a circular saw running along the floor of standing row y between tiles x0 and x1 */
+  saw(x0: number, x1: number, y: number) {
+    this.traps.push({ kind: 'saw', x: x0, y, x1 });
+    return this;
+  }
+  /** a moving platform (3 tiles wide) gliding between tiles x0 and x1 on row y (its top) */
+  mover(x0: number, x1: number, y: number) {
+    this.traps.push({ kind: 'mover', x: x0, y, x1 });
+    return this;
+  }
+  /** retractable floor spikes under standing cell (x, y) */
+  spikes(x: number, y: number) {
+    this.traps.push({ kind: 'spiketrap', x, y });
+    return this;
+  }
+  /** a flame jet from a wall at standing cell (x, y), blowing in direction dir */
+  flame(x: number, y: number, dir: 1 | -1) {
+    this.traps.push({ kind: 'flame', x, y, dir });
+    return this;
+  }
+  /** a stalactite / loose debris hanging under the ceiling tile above column x (y = ceiling row) */
+  faller(x: number, y: number) {
+    this.traps.push({ kind: 'faller', x, y });
+    return this;
+  }
   /** standard spawn on the left and exit on the right, standing on row y */
   ends(spawnY = this.h - 3, exitY = this.h - 3) {
     this.m('P', 2, spawnY);
@@ -63,7 +89,7 @@ export class Builder {
     return this;
   }
   grid(): RoomGrid {
-    return { w: this.w, h: this.h, tiles: this.tiles, marks: this.marks };
+    return { w: this.w, h: this.h, tiles: this.tiles, marks: this.marks, traps: this.traps };
   }
 }
 
@@ -102,10 +128,10 @@ export const TEMPLATES: RoomTemplate[] = [
       b.m('$', 21, 9);
       b.m('T', 27, F, 'SHIFT — zryw. Daje chwilę nietykalności: przemknij przez pociski i ataki. Działa też w powietrzu.');
       b.haz(31, 34, 15);
-      b.m('T', 40, F, 'J — atak ostrzem. Przytrzymaj J i puść: atak naładowany. K — umiejętność (zużywa energię).');
+      b.m('T', 40, F, 'J, R albo lewy przycisk myszy — atak. Przytrzymaj i puść: atak naładowany. K albo prawy przycisk myszy — umiejętność (zużywa energię).');
       b.m('g', 47, F);
       b.m('T', 52, F, 'Q — nanoapteczka (leczenie). E — interakcja z terminalami. I — ekwipunek. ESC — pauza.');
-      b.m('T', 55, F, 'Pęknięte ściany kryją przejścia. Uderz w nie.');
+      b.m('T', 55, F, 'Pęknięte ściany kryją przejścia. Uderz w nie. Uważaj na pułapki: piły, wysuwane kolce, ogień ze ścian i spadający gruz zawsze najpierw ostrzegają.');
       b.crack(58, 12, 58, 14);
       b.solid(58, 11, 62, 11);
       b.m('S', 60, F);
@@ -280,6 +306,94 @@ export const TEMPLATES: RoomTemplate[] = [
       b.m('a', 15, 20).m('a', 8, 9).m('g', 18, 29);
       b.m('O', 22, 17);
       b.m('$', 10, 25).m('$', 14, 17).m('$', 6, 13);
+    },
+  },
+  {
+    id: 'tartak',
+    kind: 'combat',
+    w: 58,
+    h: H,
+    areas: [0, 2, 3, 4],
+    build: (b) => {
+      // the saw mill: blades run along the floor between raised blocks
+      b.ends();
+      b.solid(14, 12, 15, 14);
+      b.solid(30, 11, 32, 14);
+      b.solid(44, 12, 45, 14);
+      b.plat(18, 26, 10);
+      b.plat(34, 41, 9);
+      b.plat(47, 52, 11);
+      b.saw(17, 28, F).saw(34, 42, F);
+      b.spikes(8, F).spikes(9, F);
+      b.m('g', 24, F).m('g', 38, F).m('a', 25, 4).m('t', 36, 1);
+      b.m('O', 38, 8);
+      b.m('$', 22, 9).m('$', 31, 10).m('$', 50, 10);
+    },
+  },
+  {
+    id: 'korytarz',
+    kind: 'combat',
+    w: 56,
+    h: H,
+    build: (b) => {
+      // a low service corridor: retracting floor spikes and loose debris over your head
+      b.ends();
+      b.solid(1, 1, 54, 5);
+      b.solid(20, 12, 21, 14);
+      b.plat(28, 33, 11);
+      b.solid(40, 6, 46, 6);
+      b.spikes(12, F).spikes(13, F).spikes(25, F).spikes(36, F).spikes(37, F);
+      b.faller(17, 5).faller(31, 5).faller(43, 6);
+      b.m('g', 16, F).m('g', 34, F).m('a', 26, 8).m('a', 48, 8);
+      b.m('O', 40, F);
+      b.m('$', 21, 10).m('$', 30, 10);
+    },
+  },
+  {
+    id: 'kanaly',
+    kind: 'platform',
+    w: 62,
+    h: H,
+    build: (b) => {
+      // a long pit: stepping stones below, a moving platform above with the better loot
+      b.ends();
+      b.haz(10, 51, 15);
+      b.solid(14, 12, 15, 12);
+      b.solid(20, 10, 21, 10);
+      b.solid(26, 12, 27, 12);
+      b.solid(32, 10, 33, 10);
+      b.solid(38, 12, 39, 12);
+      b.solid(44, 10, 45, 10);
+      b.solid(50, 12, 51, 12);
+      b.mover(12, 47, 6);
+      b.faller(26, 0).faller(38, 0);
+      b.m('a', 18, 4).m('a', 40, 4).m('g', 56, F);
+      b.m('O', 54, F);
+      b.m('$', 32, 5).m('$', 45, 5).m('$', 21, 8);
+    },
+  },
+  {
+    id: 'wieza',
+    kind: 'vertical',
+    w: 28,
+    h: 38,
+    build: (b) => {
+      // a tall climb with flame jets from the walls
+      b.m('P', 2, 35);
+      b.solid(18, 6, 26, 6);
+      b.m('X', 25, 5);
+      b.plat(6, 11, 32);
+      b.plat(14, 19, 28);
+      b.plat(21, 26, 24);
+      b.plat(12, 17, 20);
+      b.plat(3, 8, 16);
+      b.plat(10, 15, 12);
+      b.plat(12, 16, 9);
+      b.flame(26, 23, -1).flame(1, 15, 1);
+      b.spikes(17, 27);
+      b.m('g', 15, 35).m('a', 10, 22).m('a', 18, 14);
+      b.m('O', 7, 31);
+      b.m('$', 9, 30).m('$', 13, 18).m('$', 5, 14);
     },
   },
   // ------------------------------------------------------------------ treasure / secret rooms

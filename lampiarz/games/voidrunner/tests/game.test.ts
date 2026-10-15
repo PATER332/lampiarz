@@ -407,3 +407,26 @@ test('all three weapons: combo/shot, charged attack and special each damage enem
     assert.ok(e.hp < 500, `${w}: special hits`);
   }
 });
+
+test('controls: R and mouse buttons are bound by default and added to older saves', async () => {
+  const { DEFAULT_KEYS } = await import('../src/core/input');
+  assert.ok(DEFAULT_KEYS.attack.includes('KeyR') && DEFAULT_KEYS.attack.includes('Mouse0'));
+  assert.ok(DEFAULT_KEYS.special.includes('Mouse2'));
+  const mem = new Map<string, string>();
+  (globalThis as { localStorage?: unknown }).localStorage = {
+    getItem: (k: string) => mem.get(k) ?? null,
+    setItem: (k: string, v: string) => void mem.set(k, v),
+    removeItem: (k: string) => void mem.delete(k),
+  };
+  const { loadMeta, newMeta } = await import('../src/core/save');
+  const old = newMeta() as unknown as Record<string, unknown>;
+  delete old.keysVersion;
+  (old.keys as Record<string, string[]>).attack = ['KeyJ'];
+  (old.keys as Record<string, string[]>).special = ['KeyK'];
+  (old.keys as Record<string, string[]>).heal = ['KeyR']; // R already taken by the player
+  mem.set('voidrunner.meta.v1', JSON.stringify(old));
+  const m = loadMeta();
+  assert.deepEqual(m.keys.attack, ['KeyJ', 'Mouse0'], 'R not stolen from another action');
+  assert.deepEqual(m.keys.special, ['KeyK', 'Mouse2']);
+  assert.deepEqual(m.keys.heal, ['KeyR']);
+});

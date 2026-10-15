@@ -969,6 +969,171 @@ export function drawProp(c: Ctx, pr: Prop, area: number, t: number) {
   }
 }
 
+/** Moving and timed obstacles: saws, moving platforms, floor spikes, flame jets, falling debris. */
+export function drawTrap(c: Ctx, pr: Prop, area: number, t: number) {
+  const pal = AREAS[area].palette;
+  const X = Math.round(pr.x);
+  const Y = Math.round(pr.y);
+  switch (pr.kind) {
+    case 'saw': {
+      // rail slot in the floor along the whole track, with warning stripes at both ends
+      const a = Math.round(pr.ax ?? pr.x);
+      const b = Math.round((pr.bx ?? pr.x) + 16);
+      const fy = Y + 15;
+      rect(c, a, fy - 1, b - a, 2, '#0a0c12');
+      rect(c, a, fy + 1, b - a, 1, '#3a4256');
+      for (const ex of [a - 4, b]) for (let i = 0; i < 4; i++) rect(c, ex + i, fy - 1, 1, 2, i % 2 ? '#1a1a1a' : '#ffcf3a');
+      const cx = X + 8;
+      const cy = Y + 8;
+      const rot = t * 18 * (pr.dir ?? 1);
+      // blade: dark disc, bright teeth, motion ring
+      c.fillStyle = '#5a6480';
+      c.beginPath();
+      c.arc(cx, cy, 7, 0, Math.PI * 2);
+      c.fill();
+      for (let i = 0; i < 8; i++) {
+        const an = rot + (i * Math.PI) / 4;
+        const tx = cx + Math.cos(an) * 8;
+        const ty = cy + Math.sin(an) * 8;
+        px(c, tx, ty, '#e6edf8');
+        px(c, cx + Math.cos(an + 0.2) * 7, cy + Math.sin(an + 0.2) * 7, '#c8d2e6');
+      }
+      c.strokeStyle = rgba('#ffffff', 0.25);
+      c.lineWidth = 1;
+      c.beginPath();
+      c.arc(cx, cy, 5, rot, rot + 2);
+      c.stroke();
+      rect(c, cx - 2, cy - 2, 4, 4, '#2a3040');
+      px(c, cx - 1, cy - 1, '#ff4a5a');
+      c.save();
+      c.globalCompositeOperation = 'lighter';
+      glow(c, cx, fy, 8, '#ffb23e', 0.35);
+      c.restore();
+      break;
+    }
+    case 'mover': {
+      const col = area === 1 ? '#2e5a4a' : area === 4 ? '#4a2e64' : '#3e4a66';
+      // underside thrusters keep it floating
+      rect(c, X, Y, pr.w, pr.h, col);
+      rect(c, X, Y, pr.w, 1, shade(col, 60));
+      rect(c, X, Y + 1, pr.w, 1, pal.accent);
+      rect(c, X, Y + pr.h - 1, pr.w, 1, shade(col, -30));
+      for (let i = 4; i < pr.w - 4; i += 8) rect(c, X + i, Y + 3, 4, 1, shade(col, -20));
+      rect(c, X, Y, 2, pr.h, shade(col, 30));
+      rect(c, X + pr.w - 2, Y, 2, pr.h, shade(col, -40));
+      c.save();
+      c.globalCompositeOperation = 'lighter';
+      for (const tx of [X + 8, X + pr.w - 8]) {
+        const fl = 3 + Math.floor((t * 30 + tx) % 3);
+        rect(c, tx - 1, Y + pr.h, 3, fl, rgba(pal.accent, 0.6));
+        px(c, tx, Y + pr.h + fl, rgba('#ffffff', 0.5));
+        glow(c, tx, Y + pr.h + 3, 7, pal.accent, 0.35);
+      }
+      c.restore();
+      // direction arrows
+      const d = (pr.dx ?? 0) >= 0 ? 1 : -1;
+      const ax = X + pr.w / 2 + d * 2;
+      px(c, ax, Y + 3, '#ffffff');
+      px(c, ax - d, Y + 2, '#ffffff');
+      px(c, ax - d, Y + 4, '#ffffff');
+      break;
+    }
+    case 'spiketrap': {
+      const fy = Y + 12;
+      // floor plate with slots
+      rect(c, X, fy - 2, 16, 2, '#2a3040');
+      for (let i = 1; i < 16; i += 3) px(c, X + i, fy - 2, '#0a0c12');
+      if (pr.state === 'warn') {
+        // rattling tips poke out
+        const j = Math.floor(t * 30) % 2;
+        for (let i = 1; i < 16; i += 3) rect(c, X + i, fy - 4 - j, 1, 2 + j, '#c8d2e6');
+        rect(c, X, fy - 1, 16, 1, Math.floor(t * 12) % 2 ? '#ff4a5a' : '#ffcf3a');
+      } else if (pr.state === 'on') {
+        for (let i = 1; i < 16; i += 3) {
+          c.fillStyle = '#c8d2e6';
+          c.beginPath();
+          c.moveTo(X + i - 1, fy - 2);
+          c.lineTo(X + i + 0.5, fy - 12);
+          c.lineTo(X + i + 2, fy - 2);
+          c.fill();
+          px(c, X + i, fy - 11, '#ffffff');
+        }
+        rect(c, X, fy - 1, 16, 1, '#ff4a5a');
+      }
+      break;
+    }
+    case 'flame': {
+      const ex = pr.ax ?? X;
+      const d = pr.dir ?? 1;
+      const cy = Y + 6;
+      // nozzle in the wall
+      rect(c, d > 0 ? ex - 2 : ex - 4, cy - 4, 6, 9, '#2a3040');
+      rect(c, d > 0 ? ex - 2 : ex - 4, cy - 4, 6, 1, '#5a6480');
+      rect(c, d > 0 ? ex + 3 : ex - 5, cy - 2, 2, 5, pr.state === 'idle' ? '#3a2a2a' : '#ff6a2a');
+      if (pr.state === 'warn') {
+        c.save();
+        c.globalCompositeOperation = 'lighter';
+        glow(c, ex + d * 4, cy, 6 + Math.random() * 3, '#ffb23e', 0.6);
+        c.restore();
+      } else if (pr.state === 'on') {
+        const cyc = pr.t % pr.phase;
+        const len = pr.w * Math.min(1, (cyc - 1.9) / 0.15);
+        c.save();
+        c.globalCompositeOperation = 'lighter';
+        for (let i = 0; i < len; i += 2) {
+          const k = i / pr.w;
+          const hh = 3 + k * 9 + Math.sin(t * 40 + i) * 1.5;
+          const col = k < 0.25 ? '#fff2b0' : k < 0.6 ? '#ffb23e' : '#ff5a2a';
+          rect(c, ex + d * i, cy - hh / 2 + Math.sin(t * 25 + i * 0.5) * 1, 2, hh, rgba(col, 0.85 - k * 0.4));
+        }
+        glow(c, ex + d * len * 0.5, cy, len * 0.6 + 8, '#ff7a2a', 0.35);
+        c.restore();
+      }
+      break;
+    }
+    case 'faller': {
+      const rock = area === 1 ? '#3a5a48' : area === 4 ? '#4a2a64' : '#5a5068';
+      if (pr.state === 'gone') {
+        // a small stub regrowing on the ceiling
+        const k = Math.min(1, pr.t / 5);
+        const h = Math.round(3 + k * 7);
+        c.fillStyle = rock;
+        c.beginPath();
+        c.moveTo((pr.ax ?? X), pr.ay ?? Y);
+        c.lineTo((pr.ax ?? X) + 10, pr.ay ?? Y);
+        c.lineTo((pr.ax ?? X) + 5, (pr.ay ?? Y) + h);
+        c.fill();
+        return;
+      }
+      const sx = pr.state === 'shake' ? Math.round(Math.sin(t * 70) * 1) : 0;
+      c.fillStyle = rock;
+      c.beginPath();
+      c.moveTo(X + sx, Y);
+      c.lineTo(X + 10 + sx, Y);
+      c.lineTo(X + 5 + sx, Y + pr.h);
+      c.fill();
+      rect(c, X + 1 + sx, Y, 3, 1, shade(rock, 40));
+      line(c, X + 2 + sx, Y + 1, X + 5 + sx, Y + pr.h - 2, shade(rock, 25));
+      px(c, X + 5 + sx, Y + pr.h - 1, area === 1 ? '#7dff4a' : area === 4 ? '#e04aff' : '#c8d2e6');
+      if (pr.state === 'shake') {
+        // crack line on the ceiling + warning glint
+        line(c, X - 3, Y - 1, X + 13, Y - 1, '#ffffff');
+        c.save();
+        c.globalCompositeOperation = 'lighter';
+        glow(c, X + 5, Y + 4, 10, '#ff4a5a', 0.4);
+        c.restore();
+      }
+      if (pr.state === 'fall') {
+        c.save();
+        c.globalAlpha = 0.35;
+        rect(c, X + 4, Y - 10, 2, 10, '#ffffff');
+        c.restore();
+      }
+      break;
+    }
+  }
+}
+
 /** Telegraph marker on the floor (e.g. where the acid rain will land). */
 export function drawMarker(c: Ctx, x: number, y: number, w: number, h: number, k: number, t: number) {
   c.save();

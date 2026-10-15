@@ -10,7 +10,7 @@ import { AREAS, BOSS_INFO } from '../world/areas';
 import { planArea, type RoomPlan } from '../world/expedition';
 import { lineOfSight, moveBody, overlap, solidAt, tileAt, touchesHazard } from '../world/physics';
 import type { RoomGrid } from '../world/tiles';
-import { T_BREAK, T_EMPTY } from '../world/tiles';
+import { T_BREAK, T_EMPTY, T_PLATFORM } from '../world/tiles';
 import { spawnBoss, trackBeams, updateBoss } from './bosses';
 import { COSMETICS, UPGRADES, WEAPONS, type CosmeticId, type UpgradeId, type WeaponId } from './data';
 import { spawnEnemy, updateEnemy, ENEMY_NAMES } from './enemies';
@@ -227,6 +227,7 @@ export class Game {
       dashGrace: 0,
       dodgeUsed: false,
       counterT: 0,
+      ride: -1,
     };
   }
 
@@ -256,6 +257,27 @@ export class Game {
       if (pp.kind === 'barrel') return { id: this.id(), kind: 'barrel', x: X + 3, y: Y - 14, w: 10, h: 14, hp: 1, t: 0, state: 'idle', phase: 0 } as Prop;
       if (pp.kind === 'pad') return { id: this.id(), kind: 'pad', x: X + 1, y: Y - 4, w: 14, h: 4, hp: 0, t: 0, state: 'idle', phase: 0 } as Prop;
       if (pp.kind === 'vent') return { id: this.id(), kind: 'vent', x: X + 3, y: Y - 2, w: 10, h: 2, hp: 0, t: Math.random() * 3, state: 'idle', phase: 3.4 } as Prop;
+      if (pp.kind === 'saw') {
+        const ax = pp.x * TILE;
+        const bx = (pp.x1 ?? pp.x + 6) * TILE;
+        return { id: this.id(), kind: 'saw', x: ax, y: Y - 15, w: 16, h: 16, hp: 0, t: Math.random() * 6, state: 'on', phase: 0, ax, bx, dir: 1 } as Prop;
+      }
+      if (pp.kind === 'mover') {
+        const ax = pp.x * TILE;
+        const bx = (pp.x1 ?? pp.x + 6) * TILE;
+        return { id: this.id(), kind: 'mover', x: ax, y: pp.y * TILE, w: 48, h: 6, hp: 0, t: Math.random() * 4, state: 'on', phase: 0, ax, bx, dx: 0, dy: 0 } as Prop;
+      }
+      if (pp.kind === 'spiketrap') return { id: this.id(), kind: 'spiketrap', x: X, y: Y - 12, w: 16, h: 12, hp: 0, t: (pp.x % 3) * 0.45 + Math.random() * 0.2, state: 'idle', phase: 3.2 } as Prop;
+      if (pp.kind === 'flame') {
+        const dir = pp.dir ?? 1;
+        // emitter flush with the wall; the jet covers 3.5 tiles in front of it
+        const ex = dir > 0 ? X : X + TILE;
+        return { id: this.id(), kind: 'flame', x: dir > 0 ? ex : ex - 56, y: Y - 22, w: 56, h: 12, hp: 0, t: Math.random() * 3, state: 'idle', phase: 3.0, dir, ax: ex } as Prop;
+      }
+      if (pp.kind === 'faller') {
+        const fy = (pp.y + 1) * TILE;
+        return { id: this.id(), kind: 'faller', x: X + 3, y: fy, w: 10, h: 14, hp: 0, t: 0, state: 'idle', phase: 0, ax: X + 3, ay: fy, vy: 0 } as Prop;
+      }
       const tiles: number[] = [];
       for (let i = 0; i < (pp.w ?? 3); i++) tiles.push(pp.y * this.grid.w + pp.x + i);
       return { id: this.id(), kind: 'crumble', x: X, y: pp.y * TILE, w: (pp.w ?? 3) * TILE, h: 4, hp: 0, t: 0, state: 'idle', phase: 0, tiles } as Prop;
@@ -271,6 +293,7 @@ export class Game {
     p.attack = null;
     p.dashT = 0;
     p.chargeT = 0;
+    p.ride = -1;
     p.airJumps = this.airJumpsMax();
     p.airDashes = this.airDashesMax();
     this.roomTime = 0;
@@ -358,6 +381,7 @@ export class Game {
       this.bossIntroT -= dt;
       if (this.bossIntroT <= 0 && this.room.boss) this.startBoss();
     }
+    this.updateMovers(dt);
     this.updatePlayer(dt);
     for (const e of this.enemies) {
       if (e.dead) {
@@ -435,7 +459,9 @@ export class Game {
       p.vx = p.facing * PLAYER.dashSpeed * this.speedMult();
       p.vy = 0;
       if (Math.random() < 0.8) this.part(p.x + p.w / 2, p.y + p.h / 2 + (Math.random() - 0.5) * 14, 0, 0, 0.25, COSMETICS[this.cosmetic].glow, 3, 0, 'glow');
+      const feet0 = p.y + p.h;
       moveBody(p, dt, this.grid);
+      this.landOnMovers(feet0);
       if (p.dashT <= 0) {
         p.vx *= 0.4;
         p.dashGrace = 0.08;
@@ -506,7 +532,9 @@ export class Game {
     p.vy = Math.min(p.sliding ? 70 : MAX_FALL, p.vy + GRAVITY * dt * (p.vy > 0 ? 1.15 : 1));
     p.wasOnGround = p.onGround;
     const vyBefore = p.vy;
+    const feet0 = p.y + p.h;
     moveBody(p, dt, this.grid, p.dropT > 0);
+    this.landOnMovers(feet0);
     // ---- wall slide: pressing toward a wall while falling
     p.sliding = false;
     if (!p.onGround && rawDir !== 0 && p.vy > 0) {
@@ -578,6 +606,7 @@ export class Game {
 
   private standingOnPlatform() {
     const p = this.player;
+    if (p.ride >= 0) return true; // moving platforms are one-way too
     const ty = Math.floor((p.y + p.h + 1) / TILE);
     const x0 = Math.floor(p.x / TILE);
     const x1 = Math.floor((p.x + p.w - 0.01) / TILE);
@@ -667,7 +696,10 @@ export class Game {
             : { x: p.x - 8 * r, y: p.y - 22 * r, w: p.w + 16 * r, h: 24 * r };
         const dmg = w.combo[0].dmg * 1.25 * (1 + this.up('energyblade') * 0.15);
         const hits = this.meleeHits(box, dmg, 140, a, this.weapon === 'heavy', a.kind === 'down' ? 'down' : 'up');
-        const spikes = a.kind === 'down' && touchesHazard({ x: box.x, y: box.y, w: box.w, h: box.h - 8 }, this.grid);
+        const spikes =
+          a.kind === 'down' &&
+          (touchesHazard({ x: box.x, y: box.y, w: box.w, h: box.h - 8 }, this.grid) ||
+            this.props.some((pp) => (pp.kind === 'saw' || (pp.kind === 'spiketrap' && pp.state === 'on')) && overlap(box, pp)));
         if (a.kind === 'down' && (hits || spikes) && !a.hit.has(-60)) {
           a.hit.add(-60);
           p.vy = -330;
@@ -1175,11 +1207,156 @@ export class Game {
     }
   }
 
-  private updateProps(dt: number) {
+  /** Moving platforms move first and carry whoever stands on them. */
+  private updateMovers(dt: number) {
     const p = this.player;
     for (const pr of this.props) {
+      if (pr.kind !== 'mover') continue;
+      pr.t += dt;
+      const span = (pr.bx ?? pr.x) - (pr.ax ?? pr.x);
+      // smooth back-and-forth (sine), ~45 px/s in the middle, slowing down at the ends
+      const period = Math.max(3, (span / 45) * Math.PI);
+      const e = 0.5 - 0.5 * Math.cos((pr.t / period) * Math.PI * 2);
+      const nx = (pr.ax ?? pr.x) + span * e;
+      pr.dx = nx - pr.x;
+      pr.x = nx;
+      if (p.ride === pr.id && !p.dead) {
+        const onTop = Math.abs(p.y + p.h - pr.y) < 2 && p.x + p.w > pr.x - 2 && p.x < pr.x + pr.w + 2;
+        if (onTop) {
+          // carry the rider sideways unless a wall is in the way
+          const tx = Math.floor((pr.dx > 0 ? p.x + p.w + pr.dx : p.x + pr.dx) / TILE);
+          const y0 = Math.floor(p.y / TILE);
+          const y1 = Math.floor((p.y + p.h - 0.01) / TILE);
+          let blocked = false;
+          for (let ty = y0; ty <= y1; ty++) if (solidAt(this.grid, tx, ty)) blocked = true;
+          if (!blocked) p.x += pr.dx;
+        } else p.ride = -1;
+      }
+    }
+  }
+
+  /** Lands the player on top of a moving platform (one-way, like a ledge). */
+  private landOnMovers(feet0: number) {
+    const p = this.player;
+    p.ride = -1;
+    if (p.vy < 0 || p.dropT > 0 || p.dead) return;
+    for (const pr of this.props) {
+      if (pr.kind !== 'mover') continue;
+      if (p.x + p.w <= pr.x + 1 || p.x >= pr.x + pr.w - 1) continue;
+      const feet = p.y + p.h;
+      if (feet0 <= pr.y + 3 && feet >= pr.y - 0.5 && feet <= pr.y + 12) {
+        p.y = pr.y - p.h;
+        p.vy = 0;
+        p.onGround = true;
+        p.ride = pr.id;
+        return;
+      }
+    }
+  }
+
+  private updateProps(dt: number) {
+    const p = this.player;
+    const pbox = { x: p.x + 2, y: p.y + 2, w: p.w - 4, h: p.h - 2 };
+    const hurtEnemies = (box: { x: number; y: number; w: number; h: number }, dmg: number, rate: number) => {
+      for (const e of this.enemies) if (!e.dead && e.type !== 'boss' && overlap(box, e) && Math.random() < dt * rate) this.hitEnemy(e, dmg, Math.sign(e.x + e.w / 2 - (box.x + box.w / 2)) || 1, 120, 'mine');
+    };
+    for (const pr of this.props) {
+      if (pr.kind === 'mover') continue;
       pr.t += dt;
       switch (pr.kind) {
+        case 'saw': {
+          // runs along its track and bounces at the ends
+          const sp = 62 + this.run.area * 6;
+          pr.x += (pr.dir ?? 1) * sp * dt;
+          if (pr.x >= (pr.bx ?? pr.x)) {
+            pr.x = pr.bx ?? pr.x;
+            pr.dir = -1;
+          } else if (pr.x <= (pr.ax ?? pr.x)) {
+            pr.x = pr.ax ?? pr.x;
+            pr.dir = 1;
+          }
+          const cx = pr.x + 8;
+          const cy = pr.y + 8;
+          if (Math.random() < 0.5) this.part(cx - (pr.dir ?? 1) * 4, pr.y + 15, -(pr.dir ?? 1) * (40 + Math.random() * 80), -40 - Math.random() * 60, 0.25, '#ffcf8a', 1, 300, 'spark');
+          if (!p.dead && Math.hypot(Math.max(p.x, Math.min(cx, p.x + p.w)) - cx, Math.max(p.y, Math.min(cy, p.y + p.h)) - cy) < 7) this.damagePlayer(14, cx);
+          hurtEnemies({ x: cx - 7, y: cy - 7, w: 14, h: 14 }, 10, 4);
+          break;
+        }
+        case 'spiketrap': {
+          const cyc = pr.t % pr.phase;
+          const prev = pr.state;
+          pr.state = cyc < 1.9 ? 'idle' : cyc < 2.5 ? 'warn' : 'on';
+          if (pr.state === 'warn' && prev === 'idle' && Math.abs(pr.x - p.x) < 140) this.audio.play('telegraph');
+          if (pr.state === 'on' && prev === 'warn') {
+            for (let i = 0; i < 4; i++) this.part(pr.x + Math.random() * 16, pr.y + 11, (Math.random() - 0.5) * 40, -30, 0.3, '#8a93ad', 2, 80, 'dust');
+          }
+          if (pr.state === 'on') {
+            const box = { x: pr.x + 2, y: pr.y + 2, w: 12, h: 10 };
+            if (overlap(box, pbox)) this.damagePlayer(16, pr.x + 8);
+            hurtEnemies(box, 12, 3);
+          }
+          break;
+        }
+        case 'flame': {
+          const cyc = pr.t % pr.phase;
+          const prev = pr.state;
+          pr.state = cyc < 1.2 ? 'idle' : cyc < 1.9 ? 'warn' : 'on';
+          if (pr.state === 'warn' && prev === 'idle' && Math.abs(pr.x - p.x) < 180) this.audio.play('telegraph');
+          if (pr.state === 'on') {
+            const k = Math.min(1, (cyc - 1.9) / 0.15);
+            const len = pr.w * k;
+            const box = pr.dir! > 0 ? { x: pr.ax!, y: pr.y, w: len, h: pr.h } : { x: pr.ax! - len, y: pr.y, w: len, h: pr.h };
+            if (overlap(box, pbox)) this.damagePlayer(12, pr.ax!);
+            hurtEnemies(box, 8, 4);
+            if (Math.random() < 0.9) this.part(pr.ax! + pr.dir! * Math.random() * len, pr.y + 6 + (Math.random() - 0.5) * 8, pr.dir! * 60, -20 - Math.random() * 30, 0.35, Math.random() < 0.5 ? '#ffb23e' : '#ff5a2a', 2, -60, 'glow');
+          } else if (pr.state === 'warn' && Math.random() < 0.4) this.part(pr.ax! + pr.dir! * 3, pr.y + 6, pr.dir! * 20, -10, 0.2, '#ffe066', 1, 0, 'spark');
+          break;
+        }
+        case 'faller': {
+          if (pr.state === 'idle') {
+            const under = Math.abs(p.x + p.w / 2 - (pr.x + 5)) < 16 && p.y > pr.y && p.y - pr.y < 11 * TILE && !p.dead;
+            if (under && lineOfSight(this.grid, pr.x + 5, pr.y + 4, p.x + p.w / 2, p.y + 4)) {
+              pr.state = 'shake';
+              pr.t = 0;
+              this.audio.play('telegraph');
+            }
+          } else if (pr.state === 'shake') {
+            if (Math.random() < 0.3) this.part(pr.x + Math.random() * 10, pr.y, 0, 20, 0.4, '#5a5068', 1, 200, 'debris');
+            if (pr.t > 0.5) {
+              pr.state = 'fall';
+              pr.vy = 0;
+            }
+          } else if (pr.state === 'fall') {
+            pr.vy = Math.min(520, (pr.vy ?? 0) + 900 * dt);
+            pr.y += pr.vy * dt;
+            const box = { x: pr.x, y: pr.y, w: pr.w, h: pr.h };
+            let hit = false;
+            if (overlap(box, pbox)) {
+              this.damagePlayer(18, pr.x + 5);
+              hit = true;
+            }
+            for (const e of this.enemies) if (!e.dead && e.type !== 'boss' && overlap(box, e)) {
+              this.hitEnemy(e, 30, 0, 0, 'mine');
+              hit = true;
+            }
+            const tx = Math.floor((pr.x + 5) / TILE);
+            const ty = Math.floor((pr.y + pr.h) / TILE);
+            if (hit || solidAt(this.grid, tx, ty) || tileAt(this.grid, tx, ty) === T_PLATFORM || pr.y > this.grid.h * TILE) {
+              pr.state = 'gone';
+              pr.t = 0;
+              this.shake = Math.max(this.shake, 3);
+              this.audio.play('land');
+              for (let i = 0; i < 10; i++) this.part(pr.x + 5, pr.y + pr.h, (Math.random() - 0.5) * 160, -Math.random() * 120, 0.7, i % 2 ? '#6a5a7a' : '#3a3048', 2, 500, 'debris');
+            }
+          } else if (pr.state === 'gone' && pr.t > 5) {
+            // grows back slowly
+            pr.state = 'idle';
+            pr.t = 0;
+            pr.x = pr.ax ?? pr.x;
+            pr.y = pr.ay ?? pr.y;
+          }
+          break;
+        }
         case 'barrel':
           if (pr.state === 'lit' && pr.t > 0.45) {
             pr.state = 'gone';

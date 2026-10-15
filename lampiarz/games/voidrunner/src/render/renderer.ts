@@ -9,7 +9,7 @@ import { T_EMPTY, T_HAZARD } from '../world/tiles';
 import { background } from './background';
 import { glow, line, makeCanvas, px, rect, rgba, type Ctx } from './pixel';
 import { renderRoom, type Anim, type RoomArt } from './roomArt';
-import { drawBoss, drawDoor, drawEnemy, drawMarker, drawObject, drawPickup, drawPlayer, drawProjectile, drawProp, drawSlash } from './sprites';
+import { drawBoss, drawDoor, drawEnemy, drawMarker, drawObject, drawPickup, drawPlayer, drawProjectile, drawProp, drawSlash, drawTrap } from './sprites';
 
 /** Draws a sprite with a 1-pixel dark outline so characters read clearly against any wall. */
 class Outliner {
@@ -173,8 +173,10 @@ export class Renderer {
       const ly = Math.round(VIEW_H - L.cv.height + 40 + (roomH - VIEW_H - cy) * L.factor * 0.6);
       for (let x = off - L.cv.width; x < VIEW_W; x += L.cv.width) c.drawImage(L.cv, Math.round(x), ly);
     }
-    // haze between background and room
-    c.fillStyle = rgba(pal.fog, 0.25);
+    // haze between background and room: pushes the backdrop back so the playable tiles stand out
+    c.fillStyle = 'rgba(2,3,10,0.38)';
+    c.fillRect(0, 0, VIEW_W, VIEW_H);
+    c.fillStyle = rgba(pal.fog, 0.22);
     c.fillRect(0, 0, VIEW_W, VIEW_H);
 
     c.save();
@@ -204,7 +206,13 @@ export class Renderer {
     // ---- objects
     const near = g.nearObject();
     for (const o of g.objects) drawObject(c, o, area, t, o === near);
-    for (const pr of g.props) if (pr.x + pr.w > cx - 20 && pr.x < cx + VIEW_W + 20) drawProp(c, pr, area, t);
+    for (const pr of g.props) {
+      const x0 = Math.min(pr.x, pr.ax ?? pr.x) - 60;
+      const x1 = Math.max(pr.x + pr.w, (pr.bx ?? pr.x) + 16) + 60;
+      if (x1 < cx || x0 > cx + VIEW_W) continue;
+      if (TRAPS.has(pr.kind)) drawTrap(c, pr, area, t);
+      else drawProp(c, pr, area, t);
+    }
     for (const k2 of g.pickups) drawPickup(c, k2, t);
 
     // ---- contact shadows under everything standing on the ground
@@ -407,6 +415,31 @@ export class Renderer {
       c.fillStyle = `rgba(2,3,8,${a})`;
       c.fillRect(0, 0, VIEW_W, VIEW_H);
     }
+    // ---- off-screen exit marker once the door is open
+    if (!g.doorLocked && !p.dead && !g.transition) {
+      const ex = g.room.exit.x * TILE + 8 - cx;
+      const ey = (g.room.exit.y - 1) * TILE - cy;
+      if (ex < 8 || ex > VIEW_W - 8 || ey < 8 || ey > VIEW_H - 8) {
+        // kept clear of the HUD corners (sector name top right, minimap bottom right)
+        const mx = Math.max(14, Math.min(VIEW_W - 14, ex));
+        const my = Math.max(34, Math.min(VIEW_H - 44, ey));
+        const ang = Math.atan2(ey - my, ex - mx);
+        const pulse = 0.6 + Math.sin(t * 6) * 0.3;
+        c.save();
+        c.translate(mx, my);
+        c.rotate(ang);
+        c.globalAlpha = pulse;
+        c.fillStyle = '#5dff9b';
+        c.beginPath();
+        c.moveTo(7, 0);
+        c.lineTo(-4, -5);
+        c.lineTo(-1, 0);
+        c.lineTo(-4, 5);
+        c.closePath();
+        c.fill();
+        c.restore();
+      }
+    }
     // ---- text overlay (crisp)
     this.drawText(g, cx, cy);
   }
@@ -519,6 +552,10 @@ export class Renderer {
       if (pr.kind === 'barrel' && pr.state === 'lit') hole(pr.x + pr.w / 2, pr.y + pr.h / 2, 50, 0.7);
       else if (pr.kind === 'pad') hole(pr.x + pr.w / 2, pr.y, 26, 0.45);
       else if (pr.kind === 'vent') hole(pr.x + pr.w / 2, pr.y - 6, 18, 0.3);
+      else if (pr.kind === 'flame' && pr.state !== 'idle') hole((pr.ax ?? pr.x) + (pr.dir ?? 1) * 24, pr.y + 6, pr.state === 'on' ? 60 : 20, 0.7);
+      else if (pr.kind === 'saw') hole(pr.x + 8, pr.y + 12, 26, 0.45);
+      else if (pr.kind === 'mover') hole(pr.x + pr.w / 2, pr.y + 4, 34, 0.4);
+      else if (pr.kind === 'spiketrap' && pr.state !== 'idle') hole(pr.x + 8, pr.y + 8, 18, 0.35);
     }
     for (const q of g.particles) if (q.kind === 'glow' && q.size >= 3) hole(q.x, q.y, 10, 0.25 * (q.life / q.max));
     this.c.drawImage(this.light, 0, 0);
@@ -717,6 +754,8 @@ function drawHazard(c: Ctx, h: Game['hazards'][number], t: number, roomW: number
   }
 }
 
+const TRAPS = new Set(['saw', 'mover', 'spiketrap', 'flame', 'faller']);
+
 /** The first floor surface under a point (pixels), or null when there is none nearby. */
 function groundBelow(g: Game, x: number, y: number): number | null {
   const tx = Math.floor(x / TILE);
@@ -846,6 +885,45 @@ function drawAnim(c: Ctx, a: Anim, t: number) {
         glow(c, a.x + sw, a.y, 6, a.color, 0.4);
         c.restore();
       }
+      break;
+    }
+    case 'bubble': {
+      // bubbles rising inside a specimen tank (28 px wide)
+      c.save();
+      for (let i = 0; i < 5; i++) {
+        const k = (t * 0.25 + i * 0.2 + a.ph) % 1;
+        const bx = a.x + 4 + ((i * 7 + Math.floor(a.ph * 3)) % 20) + Math.sin(t * 3 + i) * 1.5;
+        const by = a.y - k * a.h;
+        c.globalAlpha = 0.6 * (1 - k * 0.6);
+        px(c, bx, by, a.color);
+        if (i % 2) px(c, bx + 1, by, a.color);
+      }
+      c.restore();
+      break;
+    }
+    case 'pulse': {
+      const k = (t * 0.6 + a.ph) % 1;
+      c.save();
+      c.globalCompositeOperation = 'lighter';
+      c.strokeStyle = rgba(a.color, 0.5 * (1 - k));
+      c.lineWidth = 1;
+      c.beginPath();
+      c.arc(a.x, a.y, 4 + k * a.h, 0, Math.PI * 2);
+      c.stroke();
+      glow(c, a.x, a.y, 10, a.color, 0.35 + Math.sin(t * 4 + a.ph) * 0.15);
+      rect(c, a.x - 1, a.y - 1, 3, 3, '#ffffff');
+      c.restore();
+      break;
+    }
+    case 'wisp': {
+      c.save();
+      c.globalCompositeOperation = 'lighter';
+      for (let i = 0; i < 4; i++) {
+        const k = (t * 0.3 + i * 0.25 + a.ph) % 1;
+        c.globalAlpha = 0.7 * (1 - k);
+        px(c, a.x + Math.sin(t * 2 + i * 2) * 5, a.y + k * a.h, a.color);
+      }
+      c.restore();
       break;
     }
     case 'steam': {

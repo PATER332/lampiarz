@@ -17,7 +17,7 @@ export interface Light {
 
 /** Small animated details layered over the pre-rendered room every frame. */
 export interface Anim {
-  kind: 'shaft' | 'drip' | 'led' | 'fan' | 'neon' | 'screen' | 'arc' | 'bulb' | 'steam';
+  kind: 'shaft' | 'drip' | 'led' | 'fan' | 'neon' | 'screen' | 'arc' | 'bulb' | 'steam' | 'bubble' | 'pulse' | 'wisp';
   x: number;
   y: number;
   h: number; // shaft length / drip fall distance / size
@@ -83,6 +83,26 @@ export function renderRoom(grid: RoomGrid, area: number, seed: number, skip: Set
     anims.push({ kind: 'led', x: X, y: Y, h: 2, color: r() < 0.6 ? (area === 1 ? '#7dff4a' : area === 4 ? pal.accent : '#ff4a5a') : '#5dff9b', ph: r() * 10 });
   }
 
+  // ---------------------------------------------------------------- big set pieces standing on floors
+  {
+    const spots: { x: number; y: number }[] = [];
+    for (let y = 3; y < grid.h - 1; y++)
+      for (let x = 2; x < grid.w - 5; x++) {
+        if (!solid(x, y + 1) || !solid(x + 3, y + 1)) continue;
+        let free = true;
+        for (let yy = y - 4; yy <= y && free; yy++) for (let xx = x; xx <= x + 3; xx++) if (t(xx, yy) !== T_EMPTY) free = false;
+        if (free) spots.push({ x, y });
+      }
+    const n = Math.max(1, Math.floor(grid.w / 16));
+    const placed: { x: number; y: number }[] = [];
+    for (let i = 0; i < n * 3 && placed.length < n && spots.length; i++) {
+      const sp = spots[Math.floor(r() * spots.length)];
+      if (placed.some((q) => Math.abs(q.x - sp.x) < 7 && Math.abs(q.y - sp.y) < 4)) continue;
+      placed.push(sp);
+      setPiece(bc, sp.x * TILE, (sp.y + 1) * TILE, area, r, lights);
+    }
+  }
+
   // ---------------------------------------------------------------- tiles
   for (let y = 0; y < grid.h; y++)
     for (let x = 0; x < grid.w; x++) {
@@ -92,6 +112,23 @@ export function renderRoom(grid: RoomGrid, area: number, seed: number, skip: Set
       if (k === T_SOLID || k === T_BREAK) solidTile(c, x, y, X, Y, area, k === T_BREAK, solid, r);
       else if (k === T_PLATFORM) platformTile(c, X, Y, area, t(x - 1, y) !== T_PLATFORM, t(x + 1, y) !== T_PLATFORM, solid(x, y + 1));
       else if (k === T_HAZARD) hazards.push({ x: X, y: Y });
+    }
+
+  // ---------------------------------------------------------------- crisp outline around every walkable shape
+  for (let y = 0; y < grid.h; y++)
+    for (let x = 0; x < grid.w; x++) {
+      if (solid(x, y)) continue;
+      const X = x * TILE;
+      const Y = y * TILE;
+      const ink = 'rgba(2,3,8,0.9)';
+      if (solid(x, y + 1)) rect(c, X, Y + TILE - 1, TILE, 1, ink);
+      if (solid(x, y - 1)) rect(c, X, Y, TILE, 1, ink);
+      if (solid(x - 1, y)) rect(c, X, Y, 1, TILE, ink);
+      if (solid(x + 1, y)) rect(c, X + TILE - 1, Y, 1, TILE, ink);
+      if (t(x, y) === T_PLATFORM) {
+        rect(c, X, Y + 5, TILE, 1, ink);
+        if (t(x, y - 1) === T_EMPTY) rect(c, X, Y - 1, TILE, 1, ink);
+      }
     }
 
   // ---------------------------------------------------------------- ambient occlusion on the back wall:
@@ -180,7 +217,7 @@ function backWall(c: Ctx, grid: RoomGrid, area: number, r: () => number, lights:
   const W = grid.w * TILE;
   const H = grid.h * TILE;
   const col = mix(pal.wallLo, pal.far, 0.5);
-  c.globalAlpha = 0.75;
+  c.globalAlpha = 0.5;
   // structural columns and beams, with gaps so the parallax shows through
   for (let x = 4 + Math.floor(r() * 6); x < grid.w - 2; x += 11 + Math.floor(r() * 9)) {
     const X = x * TILE;
@@ -257,7 +294,8 @@ function solidTile(c: Ctx, tx: number, ty: number, X: number, Y: number, area: n
           depth = d - 1;
           break;
         }
-  const base = depth === 0 ? pal.wallHi : depth === 1 ? pal.wall : depth === 2 ? shade(pal.wall, -10) : pal.wallLo;
+  // surface tiles are clearly lighter than the deep rock and the back wall: the playable shape reads at a glance
+  const base = depth === 0 ? mix(pal.wallHi, pal.trim, 0.4) : depth === 1 ? pal.wallHi : depth === 2 ? pal.wall : pal.wallLo;
   rect(c, X, Y, TILE, TILE, base);
   if (depth >= 2) {
     if (r() < 0.25) px(c, X + r() * 16, Y + r() * 16, shade(base, 10));
@@ -307,8 +345,8 @@ function solidTile(c: Ctx, tx: number, ty: number, X: number, Y: number, area: n
   }
   // exposed edges
   if (top) {
-    rect(c, X, Y, TILE, 3, pal.trim);
-    rect(c, X, Y, TILE, 1, shade(pal.trim, 40));
+    rect(c, X, Y, TILE, 3, shade(pal.trim, 12));
+    rect(c, X, Y, TILE, 1, mix(shade(pal.trim, 60), pal.accent, 0.25));
     rect(c, X, Y + 3, TILE, 1, shade(base, -18));
     if (area === 0 && r() < 0.12) for (let k = 0; k < 4; k++) rect(c, X + k * 4, Y + 1, 2, 2, k % 2 ? '#1a1a1a' : '#d9b03a');
     if (area === 1) {
@@ -338,9 +376,9 @@ function solidTile(c: Ctx, tx: number, ty: number, X: number, Y: number, area: n
 
 function platformTile(c: Ctx, X: number, Y: number, area: number, leftEnd: boolean, rightEnd: boolean, onSolid: boolean) {
   const pal = AREAS[area].palette;
-  const col = area === 1 ? '#2a4a40' : area === 4 ? '#3a2a4a' : '#3a4560';
+  const col = area === 1 ? '#3a6a58' : area === 4 ? '#563e6e' : '#4e5c80';
   rect(c, X, Y, TILE, 4, col);
-  rect(c, X, Y, TILE, 1, shade(col, 40));
+  rect(c, X, Y, TILE, 1, mix(shade(col, 70), pal.accent, 0.3));
   for (let k = 1; k < TILE; k += 3) px(c, X + k, Y + 2, shade(col, -25));
   rect(c, X, Y + 4, TILE, 1, shade(col, -30));
   if (!onSolid) {
@@ -546,5 +584,146 @@ function wallProp(c: Ctx, X: number, Y: number, area: number, side: number, r: (
     rect(c, wx + 1, Y + 5, 4, 4, rgba(area === 1 ? '#7dff4a' : area === 4 ? pal.accent : '#ff4a5a', 0.85));
     lights.push({ x: wx + 3, y: Y + 7, r: 20, color: area === 1 ? '#7dff4a' : area === 4 ? pal.accent : '#ff4a5a', flicker: 0.5, a: 0.3 });
     anims.push({ kind: 'led', x: wx + 2, y: Y + 6, h: 2, color: area === 1 ? '#7dff4a' : area === 4 ? pal.accent : '#ff4a5a', ph: r() * 10 });
+  }
+}
+
+// ------------------------------------------------------------------ set pieces (64 × up to 80 px)
+function setPiece(c: Ctx, X: number, Y: number, area: number, r: () => number, lights: Light[]) {
+  const pal = AREAS[area].palette;
+  const metal = '#252c3e';
+  const k = r();
+  if (area === 0) {
+    if (k < 0.5) {
+      // pressurised tank with bands, gauge and a service ladder
+      const h = 52 + Math.floor(r() * 20);
+      rect(c, X + 6, Y - h, 30, h, '#2a3246');
+      rect(c, X + 6, Y - h, 4, h, '#38425c');
+      rect(c, X + 32, Y - h, 4, h, '#1c2232');
+      rect(c, X + 8, Y - h - 3, 26, 3, '#38425c');
+      for (let yy = Y - h + 10; yy < Y - 4; yy += 14) rect(c, X + 6, yy, 30, 2, '#1a1f2c');
+      rect(c, X + 16, Y - h + 16, 8, 8, '#141822');
+      px(c, X + 20, Y - h + 19, '#ff4a5a');
+      line(c, X + 20, Y - h + 20, X + 22, Y - h + 18, '#c8d2e6');
+      for (let yy = Y - h + 4; yy < Y; yy += 4) rect(c, X + 38, yy, 6, 1, '#3a4256');
+      rect(c, X + 38, Y - h + 2, 1, h - 2, '#3a4256');
+      rect(c, X + 44, Y - h + 2, 1, h - 2, '#3a4256');
+      // hazard label
+      for (let i = 0; i < 6; i++) rect(c, X + 10 + i * 4, Y - 14, 2, 3, i % 2 ? '#1a1a1a' : '#d9b03a');
+      anims.push({ kind: 'steam', x: X + 21, y: Y - h - 3, h: 1, color: '#c8d2e6', ph: r() * 10 });
+    } else {
+      // server racks with rows of status lights
+      for (let i = 0; i < 3; i++) {
+        const rx = X + i * 16;
+        rect(c, rx, Y - 44, 14, 44, '#1a1f2c');
+        rect(c, rx, Y - 44, 14, 1, '#3a4256');
+        for (let yy = Y - 40; yy < Y - 4; yy += 5) {
+          rect(c, rx + 2, yy, 10, 3, '#0e1119');
+          if (r() < 0.6) anims.push({ kind: 'led', x: rx + 3 + Math.floor(r() * 7), y: yy + 1, h: 1, color: r() < 0.7 ? pal.accent : '#5dff9b', ph: r() * 10 });
+        }
+      }
+      lights.push({ x: X + 24, y: Y - 22, r: 34, color: pal.accent, flicker: 0.05, a: 0.25 });
+    }
+  } else if (area === 1) {
+    // specimen tank: glass cylinder, green fluid, something curled up inside
+    const h = 50 + Math.floor(r() * 16);
+    rect(c, X + 8, Y - 8, 32, 8, metal);
+    rect(c, X + 8, Y - h - 6, 32, 6, metal);
+    rect(c, X + 8, Y - h - 6, 32, 1, '#4a5a6a');
+    rect(c, X + 10, Y - h, 28, h - 8, rgba('#1f6a4a', 0.55));
+    rect(c, X + 10, Y - h + 6, 28, 1, rgba('#7dff4a', 0.5));
+    // silhouette
+    c.fillStyle = 'rgba(8,20,16,0.85)';
+    c.beginPath();
+    c.ellipse(X + 24, Y - h / 2 - 6, 7, 12, 0.2, 0, Math.PI * 2);
+    c.fill();
+    rect(c, X + 22, Y - h / 2 - 22, 6, 6, 'rgba(8,20,16,0.85)');
+    px(c, X + 26, Y - h / 2 - 20, '#ff4a5a');
+    // glass highlights
+    rect(c, X + 12, Y - h + 2, 1, h - 12, rgba('#ffffff', 0.25));
+    rect(c, X + 35, Y - h + 2, 1, h - 12, rgba('#ffffff', 0.1));
+    if (r() < 0.35) {
+      // cracked and leaking
+      line(c, X + 30, Y - h + 10, X + 34, Y - h + 22, rgba('#d8ffe6', 0.7));
+      line(c, X + 34, Y - h + 22, X + 31, Y - h + 30, rgba('#d8ffe6', 0.7));
+    }
+    anims.push({ kind: 'bubble', x: X + 10, y: Y - 8, h: h - 10, color: '#b8ffd0', ph: r() * 10 });
+    lights.push({ x: X + 24, y: Y - h / 2, r: 40, color: pal.accent, flicker: 0.1, a: 0.4 });
+  } else if (area === 2) {
+    // shop front: shutter, sign board and an air conditioner above
+    rect(c, X, Y - 40, 56, 40, '#1d1828');
+    rect(c, X, Y - 40, 56, 1, '#3a3048');
+    rect(c, X + 4, Y - 26, 30, 26, '#141019');
+    for (let yy = Y - 25; yy < Y; yy += 3) rect(c, X + 4, yy, 30, 1, '#241e30');
+    const sign = r() < 0.5 ? pal.accent : pal.accent2;
+    rect(c, X + 3, Y - 36, 34, 7, '#0e0b14');
+    for (let i = 0; i < 6; i++) rect(c, X + 6 + i * 5, Y - 34, 3, 3, rgba(sign, 0.9));
+    anims.push({ kind: 'neon', x: X + 6, y: Y - 34, h: 1, color: sign, ph: r() * 10 });
+    lights.push({ x: X + 20, y: Y - 32, r: 36, color: sign, flicker: 0.1, a: 0.45 });
+    // window with a warm light
+    rect(c, X + 40, Y - 30, 12, 14, '#0e0b14');
+    if (r() < 0.6) {
+      rect(c, X + 41, Y - 29, 10, 12, rgba('#ffcf8a', 0.35));
+      lights.push({ x: X + 46, y: Y - 23, r: 20, color: '#ffcf8a', flicker: 0.03, a: 0.25 });
+    }
+    // AC unit with a fan
+    rect(c, X + 38, Y - 54, 16, 12, '#2a2536');
+    rect(c, X + 38, Y - 54, 16, 1, '#4a4058');
+    anims.push({ kind: 'fan', x: X + 46, y: Y - 48, h: 4, color: '#3a3048', ph: r() * 6 });
+    // graffiti
+    const gcol = ['#ff3d6e', '#3ee6ff', '#ffd23e', '#8a5cff'][Math.floor(r() * 4)];
+    let gx = X + 6;
+    let gy = Y - 10 - r() * 8;
+    for (let i = 0; i < 22; i++) {
+      const nx = gx + 1 + r() * 2;
+      const ny = gy + (r() - 0.5) * 6;
+      line(c, gx, gy, nx, ny, rgba(gcol, 0.55));
+      gx = nx;
+      gy = Math.max(Y - 24, Math.min(Y - 3, ny));
+    }
+  } else if (area === 3) {
+    // reactor ring with glowing segments
+    const cx = X + 32;
+    const cy = Y - 38;
+    c.strokeStyle = '#1a2440';
+    c.lineWidth = 6;
+    c.beginPath();
+    c.arc(cx, cy, 26, 0, Math.PI * 2);
+    c.stroke();
+    c.strokeStyle = '#2c3a5c';
+    c.lineWidth = 1;
+    c.beginPath();
+    c.arc(cx, cy, 29, 0, Math.PI * 2);
+    c.stroke();
+    for (let i = 0; i < 8; i++) {
+      const a = (i / 8) * Math.PI * 2;
+      rect(c, cx + Math.cos(a) * 26 - 1, cy + Math.sin(a) * 26 - 1, 3, 3, rgba(pal.accent, 0.8));
+    }
+    rect(c, cx - 3, cy + 26, 6, Y - cy - 26, metal);
+    anims.push({ kind: 'pulse', x: cx, y: cy, h: 22, color: pal.accent, ph: r() * 10 });
+    lights.push({ x: cx, y: cy, r: 56, color: pal.accent, flicker: 0.15, a: 0.45 });
+  } else {
+    // floating rift rock with crystal growth
+    const fx = X + 10 + r() * 20;
+    const fy = Y - 40 - r() * 20;
+    c.fillStyle = '#1e1028';
+    c.beginPath();
+    c.moveTo(fx - 14, fy);
+    c.lineTo(fx - 6, fy - 8);
+    c.lineTo(fx + 10, fy - 6);
+    c.lineTo(fx + 16, fy + 2);
+    c.lineTo(fx + 2, fy + 14);
+    c.closePath();
+    c.fill();
+    line(c, fx - 6, fy - 8, fx + 10, fy - 6, rgba(pal.accent, 0.6));
+    for (let i = 0; i < 3; i++) {
+      c.fillStyle = i === 1 ? pal.accent : shade(pal.accent, -70);
+      c.beginPath();
+      c.moveTo(fx - 4 + i * 4, fy - 6);
+      c.lineTo(fx - 2 + i * 4, fy - 14 - r() * 6);
+      c.lineTo(fx + i * 4, fy - 6);
+      c.fill();
+    }
+    anims.push({ kind: 'wisp', x: fx, y: fy + 12, h: 30, color: pal.accent, ph: r() * 10 });
+    lights.push({ x: fx, y: fy - 6, r: 30, color: pal.accent, flicker: 0.3, a: 0.4 });
   }
 }

@@ -5,7 +5,7 @@ import { Rng } from '../core/rng';
 import { AREAS, type EnemyType } from './areas';
 import { buildGrid, TEMPLATES, templateById, type RoomTemplate } from './rooms';
 import type { RoomGrid } from './tiles';
-import { T_EMPTY, T_PLATFORM, T_SOLID } from './tiles';
+import { T_EMPTY, T_HAZARD, T_PLATFORM, T_SOLID } from './tiles';
 
 export type ObjectKind = 'altar' | 'chest' | 'terminal' | 'checkpoint' | 'sign' | 'secret' | 'medstation';
 export type RoomRole = 'start' | 'combat' | 'upgrade' | 'explore' | 'treasure' | 'elite' | 'boss';
@@ -37,10 +37,21 @@ export interface RoomPlan {
   pickups: { x: number; y: number; value: number }[];
   lasers: { x: number; y0: number; y1: number; phase: number }[];
   /** interactive scenery: crates, explosive barrels, jump pads, steam vents, crumbling walkways */
-  props: { kind: 'crate' | 'barrel' | 'pad' | 'vent' | 'crumble'; x: number; y: number; w?: number }[];
+  props: PlacedProp[];
   boss: string | null;
   /** doors stay locked until every enemy in the room is defeated */
   lockDoor: boolean;
+}
+
+export type PropKind = 'crate' | 'barrel' | 'pad' | 'vent' | 'crumble' | 'saw' | 'mover' | 'spiketrap' | 'flame' | 'faller';
+/** Props in tile coordinates. saw / mover: x..x1 is the track; flame: dir; faller: y = ceiling row. */
+export interface PlacedProp {
+  kind: PropKind;
+  x: number;
+  y: number;
+  w?: number;
+  x1?: number;
+  dir?: 1 | -1;
 }
 
 export const ROOMS_PER_AREA = 6;
@@ -212,6 +223,8 @@ function floorCells(plan: RoomPlan, headroom = 2) {
 function placeProps(plan: RoomPlan, rng: Rng) {
   if (plan.role === 'boss') return;
   const area = plan.area;
+  // obstacles authored in the template come first
+  for (const t of plan.grid.traps ?? []) plan.props.push({ kind: t.kind, x: t.x, y: t.y, x1: t.x1, dir: t.dir });
   const used = new Set<string>();
   const take = (cells: { x: number; y: number }[]) => {
     for (let i = 0; i < 12 && cells.length; i++) {
@@ -266,6 +279,112 @@ function placeProps(plan: RoomPlan, rng: Rng) {
     }
     rng.shuffle(runs);
     for (const r of runs.slice(0, 2)) plan.props.push({ kind: 'crumble', x: r.x, y: r.y, w: r.w });
+  }
+  placeTraps(plan, rng);
+}
+
+/** Timed and moving obstacles added on top of the template, depending on the sector and room. */
+function placeTraps(plan: RoomPlan, rng: Rng) {
+  if (plan.role === 'start' || plan.role === 'boss') return;
+  const g = plan.grid;
+  const area = plan.area;
+  const at = (x: number, y: number) => (x < 0 || y < 0 || x >= g.w || y >= g.h ? T_SOLID : g.tiles[y * g.w + x]);
+  const nearDoor = (x: number, y: number) => (Math.abs(x - plan.spawn.x) < 6 && Math.abs(y - plan.spawn.y) < 4) || (Math.abs(x - plan.exit.x) < 4 && Math.abs(y - plan.exit.y) < 4);
+  const nearObj = (x: number, y: number) => plan.objects.some((o) => Math.abs(o.x - x) < 3 && Math.abs(o.y - y) < 3);
+  const busy = (x: number, y: number) => plan.props.some((p) => Math.abs(p.x - x) < 3 && Math.abs(p.y - y) < 2 && p.kind !== 'mover' && p.kind !== 'faller');
+  const calm = plan.role === 'treasure';
+  const early = area === 0 && plan.index <= 1;
+  const hasKind = (k: PropKind) => plan.props.some((p) => p.kind === k);
+
+  // retractable floor spikes (all sectors), often in pairs
+  const nSpikes = calm || early ? rng.int(0, 1) : rng.int(1, 3);
+  const floors = floorCells(plan, 3).filter((c) => !nearDoor(c.x, c.y) && !nearObj(c.x, c.y));
+  for (let i = 0; i < nSpikes && floors.length; i++) {
+    const c = floors[rng.int(0, floors.length - 1)];
+    if (busy(c.x, c.y) || at(c.x - 1, c.y + 1) === T_HAZARD || at(c.x + 1, c.y + 1) === T_HAZARD) continue;
+    plan.props.push({ kind: 'spiketrap', x: c.x, y: c.y });
+    if (rng.chance(0.6) && at(c.x + 1, c.y + 1) === T_SOLID && at(c.x + 1, c.y) === T_EMPTY && !busy(c.x + 1, c.y)) plan.props.push({ kind: 'spiketrap', x: c.x + 1, y: c.y });
+  }
+
+  // saws along long, flat floor runs (industrial sectors)
+  if ((area === 0 || area === 2 || area === 3 || area === 4) && !calm && !early && !hasKind('saw') && rng.chance(0.65)) {
+    const runs: { x0: number; x1: number; y: number }[] = [];
+    for (let y = 2; y < g.h - 1; y++) {
+      let x = 1;
+      while (x < g.w - 1) {
+        const ok = (xx: number) => at(xx, y + 1) === T_SOLID && at(xx, y) === T_EMPTY && at(xx, y - 1) === T_EMPTY && at(xx, y - 2) === T_EMPTY && !nearDoor(xx, y) && !nearObj(xx, y);
+        if (ok(x)) {
+          const x0 = x;
+          while (x < g.w - 1 && ok(x)) x++;
+          if (x - x0 >= 8) runs.push({ x0: x0 + 1, x1: x - 2, y });
+        } else x++;
+      }
+    }
+    if (runs.length) {
+      const r = rng.pick(runs);
+      const len = Math.min(r.x1 - r.x0, rng.int(7, 12));
+      const x0 = r.x0 + rng.int(0, r.x1 - r.x0 - len);
+      plan.props.push({ kind: 'saw', x: x0, y: r.y, x1: x0 + len });
+    }
+  }
+
+  // flame jets out of walls (complex, city, core)
+  if ((area === 0 || area === 2 || area === 3) && !calm && !early && !hasKind('flame') && rng.chance(0.55)) {
+    const spots: PlacedProp[] = [];
+    for (let y = 2; y < g.h - 1; y++)
+      for (let x = 2; x < g.w - 2; x++) {
+        if (at(x, y) !== T_EMPTY || at(x, y + 1) !== T_SOLID || nearDoor(x, y) || nearObj(x, y)) continue;
+        for (const dir of [1, -1] as const) {
+          if (at(x - dir, y) !== T_SOLID || at(x - dir, y - 1) !== T_SOLID) continue;
+          let open = true;
+          for (let k = 0; k < 4; k++) if (at(x + dir * k, y) !== T_EMPTY || at(x + dir * k, y - 1) !== T_EMPTY) open = false;
+          if (open) spots.push({ kind: 'flame', x, y, dir });
+        }
+      }
+    if (spots.length) plan.props.push(rng.pick(spots));
+  }
+
+  // stalactites / loose debris (bio zone, city, rift)
+  if ((area === 1 || area === 2 || area === 4) && !early) {
+    const n = calm ? rng.int(0, 1) : rng.int(1, 3);
+    const cols: { x: number; y: number }[] = [];
+    for (let x = 3; x < g.w - 3; x++)
+      for (let y = 1; y < g.h - 4; y++) {
+        if (at(x, y) !== T_SOLID || at(x, y + 1) !== T_EMPTY) continue;
+        // a free drop of 3-10 tiles onto a floor, with headroom for the player underneath
+        let d = 1;
+        while (y + d < g.h && at(x, y + d) === T_EMPTY) d++;
+        if (d >= 4 && d <= 11 && !nearDoor(x, y + d - 1)) cols.push({ x, y });
+      }
+    for (let i = 0; i < n && cols.length; i++) {
+      const c = cols[rng.int(0, cols.length - 1)];
+      if (plan.props.some((p) => p.kind === 'faller' && Math.abs(p.x - c.x) < 4)) continue;
+      plan.props.push({ kind: 'faller', x: c.x, y: c.y });
+    }
+  }
+
+  // moving platforms over long hazard pits: a ride across the acid / wires / void
+  if (!hasKind('mover')) {
+    for (let y = 2; y < g.h - 1; y++) {
+      let x = 1;
+      while (x < g.w - 1) {
+        if (at(x, y) === T_HAZARD) {
+          const x0 = x;
+          while (x < g.w - 1 && at(x, y) === T_HAZARD) x++;
+          const len = x - x0;
+          if (len >= 8)
+            for (const row of [y - 4, y - 3, y - 6, y - 7]) {
+              if (row <= 2) continue;
+              let free = true;
+              for (let xx = x0; xx < x; xx++) for (let yy = row - 2; yy <= row; yy++) if (at(xx, yy) !== T_EMPTY) free = false;
+              if (free && rng.chance(0.8)) {
+                plan.props.push({ kind: 'mover', x: x0, y: row, x1: x - 3 });
+                return;
+              }
+            }
+        } else x++;
+      }
+    }
   }
 }
 

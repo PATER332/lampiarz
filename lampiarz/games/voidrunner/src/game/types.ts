@@ -52,6 +52,8 @@ export interface Player extends Body {
   dashGrace: number;
   dodgeUsed: boolean;
   counterT: number;
+  /** id of the moving platform the player stands on, -1 = none */
+  ride: number;
 }
 
 export interface Enemy extends Body {
@@ -173,16 +175,26 @@ export interface Bolt {
 
 export interface Prop {
   id: number;
-  kind: 'crate' | 'barrel' | 'pad' | 'vent' | 'crumble';
+  kind: 'crate' | 'barrel' | 'pad' | 'vent' | 'crumble' | 'saw' | 'mover' | 'spiketrap' | 'flame' | 'faller';
   x: number; // pixels, top-left
   y: number;
   w: number;
   h: number;
   hp: number;
   t: number;
-  state: 'idle' | 'lit' | 'gone' | 'shake';
+  state: 'idle' | 'lit' | 'gone' | 'shake' | 'fall' | 'warn' | 'on';
   phase: number;
   tiles?: number[]; // crumble: tile indices
+  /** saw / mover: track ends (pixels, left edge); faller: home position */
+  ax?: number;
+  bx?: number;
+  ay?: number;
+  /** flame: direction */
+  dir?: 1 | -1;
+  /** movement in the last step (mover: carries the rider) */
+  dx?: number;
+  dy?: number;
+  vy?: number;
 }
 
 export interface RunState {

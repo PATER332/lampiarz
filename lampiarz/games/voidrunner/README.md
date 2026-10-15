@@ -11,14 +11,14 @@ ustawienia, `voidrunner.run.v1` — wyprawa w ostatnim punkcie zapisu).
 | A / D, ← / → | ruch |
 | Spacja | skok; w powietrzu drugi raz — podwójny skok |
 | Shift | zryw / unik (krótka nietykalność, działa też w powietrzu) |
-| J | atak; przytrzymaj i puść — atak naładowany |
-| K | umiejętność specjalna (zużywa energię) |
+| J, R, lewy przycisk myszy | atak; przytrzymaj i puść — atak naładowany |
+| K, prawy przycisk myszy | umiejętność specjalna (zużywa energię) |
 | E | interakcja: ołtarze ulepszeń, skrzynie, terminale, stacje medyczne |
 | Q | nanoapteczka (leczenie) |
 | I | ekwipunek |
 | S + Spacja | zeskok z kładki |
-| ↓ + J (w powietrzu) | cięcie w dół — odbicie od wrogów, skrzyń i kolców („pogo”) |
-| ↑ + J | cięcie w górę |
+| ↓ + atak (w powietrzu) | cięcie w dół — odbicie od wrogów, skrzyń i kolców („pogo”) |
+| ↑ + atak | cięcie w górę |
 | kierunek do ściany + Spacja | ślizg po ścianie i odbicie od niej |
 | Esc | pauza |
 
@@ -29,13 +29,18 @@ Na ekranach dotykowych pojawiają się przyciski (można je też włączyć/wył
 - **5 sektorów** po 6 pomieszczeń: Opuszczony Kompleks, Strefa Biologiczna (kwas), Podziemne Miasto
   (odsłonięte kable), Rdzeń Energii (lasery bezpieczeństwa), Szczelina Pustki. Każdy ma własną paletę,
   tła z paralaksą, rekwizyty, zagrożenia i zestaw wrogów.
-- **Wyprawy**: pomieszczenia to ręcznie zaprojektowane szablony (walka, platformówka, szyby pionowe, skarbiec,
-  arena elit, arena bossa) w losowej kolejności i z losowym obsadzeniem — z ziarna wyprawy.
+- **Wyprawy**: pomieszczenia to ręcznie zaprojektowane szablony (walka, tartak z piłami, korytarz z pułapkami,
+  kanały z ruchomą platformą, wieża z miotaczami ognia, platformówka, szyby pionowe, skarbiec, arena elit, arena bossa) w losowej kolejności i z losowym obsadzeniem — z ziarna wyprawy.
   Test `tests/world.test.ts` sprawdza dla każdego szablonu, że wyjście, punkty zapisu, ołtarze i skrytki
   są osiągalne.
 - **Ruch i walka**: ślizg i odbicie od ścian, cięcia w dół („pogo”) i w górę, działo celuje też w pionie,
   perfekcyjny unik (zryw tuż przed trafieniem → spowolnienie, energia, kontra ×1,6), licznik serii trafień
   z nagrodami co 10 trafień.
+- **Przeszkody**: piły jeżdżące po szynach w podłodze, wysuwane kolce, miotacze ognia w ścianach, spadające
+  stalaktyty i gruz (odrastają), ruchome platformy nad przepaściami. Każda przeszkoda najpierw ostrzega;
+  piły i wysunięte kolce można przeskoczyć „pogo” (cięcie w dół). Przeszkody ranią też wrogów.
+- **Czytelność**: jaśniejsze krawędzie i obrys wszystkiego, po czym można chodzić, przyciemnione tło,
+  minimapa pomieszczenia z wrogami, przeszkodami i wyjściem, strzałka do otwartego wyjścia poza ekranem.
 - **Elementy otoczenia**: skrzynie do rozbicia (Fragmenty, czasem zdrowie), wybuchowe beczki (ranią też gracza),
   wyrzutnie skokowe, zawory pary z ostrzeżeniem, kruszące się kładki, które po chwili się odbudowują.
 - **Wrogowie**: dron, łowca, wieżyczka, prześladowca, istota Pustki, tarczownik (blokuje ciosy z przodu) (+ odmiany elitarne). Każdy groźny atak

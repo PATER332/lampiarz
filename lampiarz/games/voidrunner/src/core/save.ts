@@ -29,6 +29,8 @@ export interface Meta {
   stats: { runs: number; wins: number; deaths: number; kills: number; bosses: number; bestArea: number; bestTime: number };
   settings: Settings;
   keys: KeyMap;
+  /** 2 = defaults include R and mouse buttons */
+  keysVersion?: number;
   tutorialDone: boolean;
 }
 
@@ -64,6 +66,7 @@ export function newMeta(): Meta {
     stats: { runs: 0, wins: 0, deaths: 0, kills: 0, bosses: 0, bestArea: 0, bestTime: 0 },
     settings: defaultSettings(),
     keys: JSON.parse(JSON.stringify(DEFAULT_KEYS)),
+    keysVersion: 2,
     tutorialDone: false,
   };
 }
@@ -111,6 +114,15 @@ export function loadMeta(): Meta {
         const v = (p.keys as KeyMap)[a];
         if (Array.isArray(v) && v.every((x) => typeof x === 'string')) keys[a] = v;
       }
+    if ((p.keysVersion ?? 1) < 2) {
+      // older saves: add the new default bindings (R, left / right mouse button) if they are free
+      const used = new Set(Object.values(keys).flat());
+      for (const [a, code] of [['attack', 'KeyR'], ['attack', 'Mouse0'], ['special', 'Mouse2']] as [Action, string][])
+        if (!used.has(code)) {
+          keys[a] = [...keys[a], code];
+          used.add(code);
+        }
+    }
     return {
       ...base,
       fragments: Math.max(0, num(p.fragments, 0)),
@@ -123,6 +135,7 @@ export function loadMeta(): Meta {
       stats: { ...base.stats, ...(p.stats ?? {}) },
       settings: { ...base.settings, ...(p.settings ?? {}) },
       keys,
+      keysVersion: 2,
       tutorialDone: !!p.tutorialDone,
     };
   } catch {

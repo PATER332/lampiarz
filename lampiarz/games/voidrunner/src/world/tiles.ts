@@ -26,11 +26,22 @@ export interface MarkAt {
   text?: string;
 }
 
+/** Moving / timed obstacles authored in a template (tile coordinates). */
+export interface TrapAt {
+  kind: 'saw' | 'mover' | 'spiketrap' | 'flame' | 'faller';
+  x: number;
+  y: number;
+  /** saw / mover: end of the track (tile x); flame: direction (1 = right, -1 = left) */
+  x1?: number;
+  dir?: 1 | -1;
+}
+
 export interface RoomGrid {
   w: number;
   h: number;
   tiles: Uint8Array;
   marks: MarkAt[];
+  traps?: TrapAt[];
 }
 
 export const isSolid = (t: number) => t === T_SOLID || t === T_BREAK;

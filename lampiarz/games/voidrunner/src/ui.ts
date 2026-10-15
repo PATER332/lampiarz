@@ -2,8 +2,8 @@
 // choice, equipment, settings, controls, death and victory screens, touch controls.
 
 import { AudioEngine } from './core/audio';
-import { STEP, VIEW_H, VIEW_W } from './core/consts';
-import { ACTIONS, DEFAULT_KEYS, Input, Keyboard, keyLabel, type Action } from './core/input';
+import { STEP, TILE, VIEW_H, VIEW_W } from './core/consts';
+import { ACTIONS, DEFAULT_KEYS, Input, Keyboard, keyLabel, MAX_BINDS, type Action } from './core/input';
 import { clearRun, loadMeta, loadRun, saveMeta, saveRun, type Meta } from './core/save';
 import { COSMETICS, PERMS, UPGRADES, WEAPONS, type CosmeticId, type UpgradeId, type WeaponId } from './game/data';
 import { Game } from './game/game';
@@ -57,6 +57,7 @@ export class App {
     this.screen = root.querySelector('.vr-layer') as HTMLElement;
     this.keyboard = new Keyboard(this.input, this.meta.keys);
     this.keyboard.onPause = () => this.onEscape();
+    this.keyboard.stage = stage as HTMLElement;
     this.game = new Game(this.meta, this.audio, this.input);
     this.audio.apply(this.meta.settings);
     this.renderer.shakeOn = this.meta.settings.shake;
@@ -259,6 +260,7 @@ export class App {
     const ups = (Object.keys(g.run.upgrades) as UpgradeId[]).filter((id) => g.up(id) > 0);
     const w = WEAPONS[g.weapon];
     this.updateCombo(g);
+    this.updateMinimap(g);
     const key = [Math.ceil(p.hp), p.maxHp, Math.floor(p.energy), p.healCharges, g.run.fragments, g.run.area, g.run.room, ups.map((u) => u + g.up(u)).join(), boss ? Math.ceil(boss.hp) + ':' + boss.phase : '', g.weapon, this.ghostHp.toFixed(2)].join('|');
     if (key === this.hudCache) return;
     this.hudCache = key;
@@ -296,6 +298,99 @@ export class App {
     if (this.signEl) this.hud.appendChild(this.signEl);
     for (const b of this.banners) this.hud.appendChild(b);
     if (this.comboEl) this.hud.appendChild(this.comboEl);
+    if (this.mapEl) this.hud.appendChild(this.mapEl);
+  }
+
+  /** Room minimap (bottom right): walls, platforms, hazards, the exit, objects, enemies and you. */
+  private mapEl: HTMLElement | null = null;
+  private mapCv: HTMLCanvasElement | null = null;
+  private mapBase: HTMLCanvasElement | null = null;
+  private mapKey = '';
+  private mapScale = 2;
+  private updateMinimap(g: Game) {
+    if (!this.mapEl) {
+      this.mapEl = document.createElement('div');
+      this.mapEl.className = 'minimap';
+      this.mapEl.innerHTML = '<canvas></canvas><div class="mm-info"></div>';
+      this.mapCv = this.mapEl.querySelector('canvas');
+      this.hud.appendChild(this.mapEl);
+    }
+    if (!this.mapEl.isConnected) this.hud.appendChild(this.mapEl);
+    // on touch screens the action buttons live in that corner
+    this.mapEl.style.display = this.touch.hidden ? '' : 'none';
+    const gr = g.grid;
+    const key = `${g.run.seed}:${g.run.area}:${g.run.room}`;
+    const accent = AREAS[g.run.area].palette.accent;
+    if (key !== this.mapKey || !this.mapBase) {
+      this.mapKey = key;
+      const sc = Math.max(1, Math.min(3, Math.floor(150 / gr.w), Math.floor(90 / gr.h)));
+      this.mapScale = sc;
+      const base = document.createElement('canvas');
+      base.width = gr.w * sc;
+      base.height = gr.h * sc;
+      const c = base.getContext('2d')!;
+      c.fillStyle = 'rgba(6,8,16,0.85)';
+      c.fillRect(0, 0, base.width, base.height);
+      for (let y = 0; y < gr.h; y++)
+        for (let x = 0; x < gr.w; x++) {
+          const t = gr.tiles[y * gr.w + x];
+          if (t === 1 || t === 4) {
+            // only the outer skin of the rock, so the map reads as corridors
+            let edge = false;
+            for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+              const nx = x + dx;
+              const ny = y + dy;
+              if (nx >= 0 && ny >= 0 && nx < gr.w && ny < gr.h && gr.tiles[ny * gr.w + nx] !== 1 && gr.tiles[ny * gr.w + nx] !== 4) edge = true;
+            }
+            c.fillStyle = edge ? '#7a86a8' : '#2a3044';
+            c.fillRect(x * sc, y * sc, sc, sc);
+          } else if (t === 2) {
+            c.fillStyle = accent;
+            c.fillRect(x * sc, y * sc, sc, 1);
+          } else if (t === 3) {
+            c.fillStyle = '#ff4a5a';
+            c.fillRect(x * sc, y * sc + sc - 1, sc, 1);
+          }
+        }
+      this.mapBase = base;
+      this.mapCv!.width = base.width;
+      this.mapCv!.height = base.height;
+      this.mapCv!.style.width = `${base.width * 2}px`;
+      this.mapCv!.style.height = `${base.height * 2}px`;
+    }
+    const c = this.mapCv!.getContext('2d')!;
+    const sc = this.mapScale;
+    const P = TILE / sc; // pixels per map pixel
+    c.drawImage(this.mapBase, 0, 0);
+    // camera window
+    const r = this.renderer;
+    c.strokeStyle = 'rgba(255,255,255,0.25)';
+    c.lineWidth = 1;
+    c.strokeRect(Math.round(r.camX / P) + 0.5, Math.round(r.camY / P) + 0.5, Math.round(VIEW_W / P) - 1, Math.round(VIEW_H / P) - 1);
+    const dot = (x: number, y: number, col: string, size = 2) => {
+      c.fillStyle = col;
+      c.fillRect(Math.round(x / P - size / 2), Math.round(y / P - size / 2), size, size);
+    };
+    // exit
+    const ex = g.room.exit;
+    dot(ex.x * TILE + 8, (ex.y - 1) * TILE + 8, g.doorLocked ? '#ff4a5a' : '#5dff9b', 3);
+    for (const o of g.objects) if (!o.used || o.kind === 'checkpoint') dot(o.x, o.y - 8, o.kind === 'checkpoint' ? '#3ee6ff' : o.kind === 'altar' || o.kind === 'chest' || o.kind === 'secret' ? '#ffe066' : '#c8d2e6');
+    for (const pr of g.props) if (pr.kind === 'saw' || pr.kind === 'flame' || pr.kind === 'spiketrap') dot(pr.x + 8, pr.y + 8, '#ffb23e', 1);
+    else if (pr.kind === 'mover') {
+      c.fillStyle = accent;
+      c.fillRect(Math.round(pr.x / P), Math.round(pr.y / P), Math.max(2, Math.round(pr.w / P)), 1);
+    }
+    for (const e of g.enemies) if (!e.dead) dot(e.x + e.w / 2, e.y + e.h / 2, e.type === 'boss' ? '#ff3d5e' : '#ff6a3a', e.type === 'boss' ? 4 : 2);
+    const p = g.player;
+    dot(p.x + p.w / 2, p.y + p.h / 2, '#ffffff', 3);
+    // info line: what to do in this room
+    const alive = g.enemies.filter((e) => !e.dead).length;
+    const info = g.doorLocked ? (alive ? `Wyjście zamknięte · wrogowie: ${alive}` : 'Wyjście zamknięte') : 'Wyjście otwarte →';
+    const el = this.mapEl.querySelector('.mm-info') as HTMLElement;
+    if (el.textContent !== info) {
+      el.textContent = info;
+      el.classList.toggle('open', !g.doorLocked);
+    }
   }
 
   /** Combo counter: a persistent element updated in place every frame (no HUD rebuild). */
@@ -611,10 +706,10 @@ export class App {
     return `<div class="vr-screen dim"><div class="panel">
       ${guide ? '' : '<button class="close-x" data-act="close" aria-label="Zamknij">×</button>'}
       <h2>Sterowanie</h2>
-      <p class="lead">${guide ? 'Pierwsza wyprawa. Tak sterujesz cyborgiem — w pierwszym pomieszczeniu tablice przypomną ci najważniejsze ruchy.' : 'Kliknij klawisz, żeby go zmienić (potem naciśnij nowy; Esc anuluje).'}</p>
+      <p class="lead">${guide ? 'Pierwsza wyprawa. Tak sterujesz cyborgiem — w pierwszym pomieszczeniu tablice przypomną ci najważniejsze ruchy.' : 'Kliknij pole, żeby je zmienić, potem naciśnij nowy klawisz — albo kliknij pole „…” wybranym przyciskiem myszy (Esc anuluje). Atak działa domyślnie pod J, R i lewym przyciskiem myszy, umiejętność pod K i prawym przyciskiem.'}</p>
       <div class="keys-table">${rows}</div>
-      <p class="hint">W powietrzu SPACJA = podwójny skok. Przytrzymaj J i puść = atak naładowany. Zryw (SHIFT) daje chwilę nietykalności — zryw tuż przed trafieniem to <b>perfekcyjny unik</b> (spowolnienie czasu, energia i mocniejsza kontra).</p>
-      <p class="hint">Przy ścianie: dociśnij kierunek, żeby się zsuwać, SPACJA = odbicie od ściany. W powietrzu ↓ + J = cięcie w dół (odbija od wrogów, skrzyń i kolców), ↑ + J = cięcie w górę. Tarczownika atakuj od tyłu albo przełam gardę atakiem naładowanym. Kolejne trafienia bez otrzymania obrażeń budują serię (co 10 — bonusowe Fragmenty).</p>
+      <p class="hint">W powietrzu SPACJA = podwójny skok. Atak: J, R albo lewy przycisk myszy (LPM) — przytrzymaj i puść = atak naładowany. Umiejętność: K albo prawy przycisk myszy (PPM). Zryw (SHIFT) daje chwilę nietykalności — zryw tuż przed trafieniem to <b>perfekcyjny unik</b> (spowolnienie czasu, energia i mocniejsza kontra).</p>
+      <p class="hint">Przy ścianie: dociśnij kierunek, żeby się zsuwać, SPACJA = odbicie od ściany. W powietrzu ↓ + atak = cięcie w dół (odbija od wrogów, skrzyń i kolców), ↑ + atak = cięcie w górę. Tarczownika atakuj od tyłu albo przełam gardę atakiem naładowanym. Kolejne trafienia bez otrzymania obrażeń budują serię (co 10 — bonusowe Fragmenty).</p>
       <div class="row" style="margin-top:14px">
         ${guide ? '<button class="btn primary" data-act="close">Zaczynamy</button>' : '<button class="btn" data-act="defaultkeys">Przywróć domyślne</button><button class="btn primary" data-act="close">Gotowe</button>'}
       </div></div></div>`;
@@ -810,7 +905,7 @@ export class App {
           if (code !== 'Escape') {
             // a key belongs to one action only
             for (const k of Object.keys(this.meta.keys) as Action[]) this.meta.keys[k] = this.meta.keys[k].filter((c) => c !== code);
-            this.meta.keys[action] = [code, ...this.meta.keys[action].filter((c) => c !== code)].slice(0, 2);
+            this.meta.keys[action] = [code, ...this.meta.keys[action].filter((c) => c !== code)].slice(0, MAX_BINDS);
             if (!this.meta.keys.pause.length) this.meta.keys.pause = ['Escape'];
             this.keyboard.setKeys(this.meta.keys);
             this.saveMeta();

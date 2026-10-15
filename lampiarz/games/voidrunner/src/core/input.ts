@@ -38,8 +38,8 @@ export const DEFAULT_KEYS: KeyMap = {
   down: ['KeyS', 'ArrowDown'],
   jump: ['Space'],
   dash: ['ShiftLeft', 'ShiftRight'],
-  attack: ['KeyJ'],
-  special: ['KeyK'],
+  attack: ['KeyJ', 'KeyR', 'Mouse0'],
+  special: ['KeyK', 'Mouse2'],
   interact: ['KeyE'],
   heal: ['KeyQ'],
   inventory: ['KeyI'],
@@ -47,6 +47,7 @@ export const DEFAULT_KEYS: KeyMap = {
 };
 
 export function keyLabel(code: string): string {
+  if (code.startsWith('Mouse')) return ({ Mouse0: 'LPM', Mouse1: 'ŚPM', Mouse2: 'PPM', Mouse3: 'Mysz 4', Mouse4: 'Mysz 5' } as Record<string, string>)[code] ?? code;
   if (code.startsWith('Key')) return code.slice(3);
   if (code.startsWith('Digit')) return code.slice(5);
   const map: Record<string, string> = {
@@ -101,7 +102,11 @@ export class Input {
   }
 }
 
-/** Keyboard → actions, with rebinding and without letting game keys scroll the page. */
+/** Max keys / buttons bound to one action. */
+export const MAX_BINDS = 3;
+
+/** Keyboard + mouse buttons → actions, with rebinding and without letting game keys scroll the page.
+ * Mouse buttons use the pseudo codes Mouse0 (left), Mouse1 (middle), Mouse2 (right), Mouse3/4 (side). */
 export class Keyboard {
   private byCode = new Map<string, Action[]>();
   onAnyKey: ((code: string) => boolean) | null = null; // used by the rebinding screen
@@ -116,7 +121,42 @@ export class Keyboard {
     window.addEventListener('keydown', this.down, { passive: false });
     window.addEventListener('keyup', this.up);
     window.addEventListener('blur', () => this.input.clear());
+    window.addEventListener('mousedown', this.mouseDown, { passive: false });
+    window.addEventListener('mouseup', this.mouseUp);
+    window.addEventListener('contextmenu', (e) => {
+      if (this.isGameSurface(e.target)) e.preventDefault();
+    });
   }
+
+  /** Mouse buttons only act on the game itself (not on menus, panels or touch buttons). */
+  stage: HTMLElement | null = null;
+  private isGameSurface(t: EventTarget | null) {
+    if (!this.stage || !(t instanceof Node)) return false;
+    return this.stage.contains(t);
+  }
+
+  private mouseDown = (e: MouseEvent) => {
+    const code = `Mouse${e.button}`;
+    if (this.onAnyKey) {
+      // rebinding: click the waiting key box with the button you want
+      if (e.target instanceof HTMLElement && e.target.classList.contains('wait')) {
+        e.preventDefault();
+        if (this.onAnyKey(code)) this.onAnyKey = null;
+      }
+      return;
+    }
+    if (!this.enabled || !this.isGameSurface(e.target)) return;
+    const acts = this.byCode.get(code);
+    if (!acts) return;
+    e.preventDefault();
+    for (const a of acts) if (a !== 'pause') this.input.press(a);
+  };
+
+  private mouseUp = (e: MouseEvent) => {
+    const acts = this.byCode.get(`Mouse${e.button}`);
+    if (!acts) return;
+    for (const a of acts) this.input.release(a);
+  };
 
   setKeys(keys: KeyMap) {
     this.byCode.clear();

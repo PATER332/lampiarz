@@ -258,15 +258,160 @@ test('prop placement: props sit on the floor inside the room, crumble runs are p
         const at = (x: number, y: number) => gr.tiles[y * gr.w + x];
         for (const pr of plan.props) {
           total++;
-          assert.ok(pr.x > 0 && pr.x < gr.w - 1 && pr.y > 0 && pr.y < gr.h - 1, `inside room (${pr.kind})`);
+          assert.ok(pr.x > 0 && pr.x < gr.w - 1 && pr.y >= (pr.kind === 'faller' ? 0 : 1) && pr.y < gr.h - 1, `inside room (${pr.kind})`);
           if (pr.kind === 'crumble') {
             for (let i = 0; i < (pr.w ?? 0); i++) assert.equal(at(pr.x + i, pr.y), T_PLATFORM, 'crumble over platform tiles');
+          } else if (pr.kind === 'faller') {
+            assert.equal(at(pr.x, pr.y), T_SOLID, 'faller hangs from a solid ceiling');
+            assert.equal(at(pr.x, pr.y + 1), T_EMPTY, 'with open space below');
+          } else if (pr.kind === 'mover') {
+            assert.ok((pr.x1 ?? 0) > pr.x, 'mover has a track');
+            for (let x = pr.x; x <= (pr.x1 ?? pr.x) + 2; x++) assert.notEqual(at(x, pr.y), T_SOLID, 'mover track is open');
+          } else if (pr.kind === 'saw') {
+            assert.ok((pr.x1 ?? 0) > pr.x, 'saw has a track');
+            for (let x = pr.x; x <= (pr.x1 ?? pr.x); x++) {
+              assert.equal(at(x, pr.y), T_EMPTY, 'saw track open');
+              assert.equal(at(x, pr.y + 1), T_SOLID, 'saw track on solid floor');
+            }
+            assert.ok(Math.abs(pr.x - plan.spawn.x) > 3 || Math.abs(pr.y - plan.spawn.y) > 3, 'no saw at the spawn');
+          } else if (pr.kind === 'flame') {
+            assert.equal(at(pr.x - (pr.dir ?? 1), pr.y), T_SOLID, 'flame comes out of a wall');
           } else {
             assert.equal(at(pr.x, pr.y), T_EMPTY, `${pr.kind} cell is open`);
             assert.ok([T_SOLID, T_PLATFORM].includes(at(pr.x, pr.y + 1)), `${pr.kind} stands on a floor`);
+            if (pr.kind === 'spiketrap') assert.ok(Math.abs(pr.x - plan.spawn.x) > 4 || Math.abs(pr.y - plan.spawn.y) > 3 || plan.template !== 'sluza', 'no spikes at the spawn');
           }
           if (pr.kind === 'pad') for (let k = 1; k <= 6; k++) assert.notEqual(at(pr.x, pr.y - k), T_SOLID, 'pad has headroom');
         }
       }
   assert.ok(total > 300, `props placed (${total})`);
+});
+
+test('saw: runs along its track, bounces at the ends and cuts the player', () => {
+  const { g } = makeGame(18);
+  const { floor } = box(g);
+  const p = g.player;
+  const saw = prop(g, 'saw', 10 * TILE, floor - 15, 16, 16, { hp: 0, ax: 10 * TILE, bx: 16 * TILE, dir: 1, state: 'on' });
+  p.x = 2 * TILE;
+  run(g, 0.5);
+  assert.ok(saw.x > 10 * TILE + 20, 'moves right');
+  run(g, 3);
+  assert.ok(saw.x >= 10 * TILE && saw.x <= 16 * TILE, 'stays on the track');
+  let turned = false;
+  let last = saw.x;
+  run(g, 4, () => {
+    if (saw.x < last) turned = true;
+    last = saw.x;
+  });
+  assert.ok(turned, 'turns around at the end');
+  // put the player in its way
+  p.iframes = 0;
+  p.x = saw.x;
+  const hp0 = p.hp;
+  run(g, 0.05);
+  assert.ok(p.hp < hp0, 'saw hurts');
+});
+
+test('moving platform: carries the player across and the player can jump off it', () => {
+  const { g, input } = makeGame(19);
+  const { floor } = box(g);
+  const p = g.player;
+  const top = floor - 5 * TILE;
+  const m = prop(g, 'mover', 6 * TILE, top, 48, 6, { hp: 0, ax: 6 * TILE, bx: 14 * TILE, state: 'on', dx: 0, t: 0 });
+  p.x = m.x + 16;
+  p.y = top - p.h - 6;
+  p.vy = 0;
+  run(g, 0.3);
+  assert.equal(p.ride, m.id, 'landed on the platform');
+  assert.equal(p.y + p.h, m.y, 'feet on its top');
+  const relX = p.x - m.x;
+  run(g, 1.5);
+  assert.ok(m.x > 6 * TILE + 20, 'platform moved');
+  assert.ok(Math.abs(p.x - m.x - relX) < 1.5, 'player moved with it');
+  assert.equal(p.ride, m.id, 'still riding');
+  input.press('jump');
+  g.step();
+  input.release('jump');
+  assert.ok(p.vy < -200, 'can jump off a moving platform');
+  assert.equal(p.ride, -1);
+});
+
+test('floor spikes: harmless while retracted, hurt when raised, telegraphed first', () => {
+  const { g } = makeGame(20);
+  const { floor } = box(g);
+  const p = g.player;
+  const sp = prop(g, 'spiketrap', 12 * TILE, floor - 12, 16, 12, { hp: 0, phase: 3.2, t: 0 });
+  p.x = 12 * TILE + 2;
+  run(g, 0.3);
+  p.iframes = 0;
+  const hp0 = p.hp;
+  run(g, 1.4); // still idle
+  assert.equal(sp.state, 'idle');
+  assert.equal(p.hp, hp0, 'no damage while retracted');
+  run(g, 0.3);
+  assert.equal(sp.state, 'warn', 'warning before the spikes rise');
+  assert.equal(p.hp, hp0);
+  run(g, 0.65);
+  assert.equal(sp.state, 'on');
+  assert.ok(p.hp < hp0, 'raised spikes hurt');
+});
+
+test('flame jet: warns, then burns everything in front of the nozzle', () => {
+  const { g } = makeGame(21);
+  const { floor } = box(g);
+  const p = g.player;
+  const fl = prop(g, 'flame', TILE, floor - 22, 56, 12, { hp: 0, phase: 3.0, t: 0, dir: 1, ax: TILE });
+  p.x = TILE + 20;
+  run(g, 0.3);
+  p.iframes = 0;
+  const hp0 = p.hp;
+  run(g, 0.8);
+  assert.equal(fl.state, 'idle');
+  run(g, 0.2);
+  assert.equal(fl.state, 'warn');
+  assert.equal(p.hp, hp0, 'warning does not hurt');
+  run(g, 0.9);
+  assert.ok(p.hp < hp0, 'flame burns');
+});
+
+test('falling debris: shakes when you walk under it, falls, breaks and grows back', () => {
+  const { g } = makeGame(22);
+  const { floor } = box(g);
+  const p = g.player;
+  const ceil = floor - 7 * TILE;
+  const f = prop(g, 'faller', 15 * TILE + 3, ceil, 10, 14, { hp: 0, ax: 15 * TILE + 3, ay: ceil, vy: 0 });
+  p.x = 3 * TILE;
+  run(g, 0.5);
+  assert.equal(f.state, 'idle', 'nothing happens far away');
+  p.x = 15 * TILE;
+  p.iframes = 0;
+  const hp0 = p.hp;
+  run(g, 0.1);
+  assert.equal(f.state, 'shake', 'warning shake');
+  run(g, 1.2);
+  assert.equal(f.state, 'gone', 'fell and broke');
+  assert.ok(p.hp < hp0, 'player standing under it got hit');
+  run(g, 5.5);
+  assert.equal(f.state, 'idle', 'grows back');
+  assert.equal(f.y, ceil);
+});
+
+test('pogo works on saws (bounce instead of damage)', () => {
+  const { g, input } = makeGame(23);
+  const { floor } = box(g);
+  const p = g.player;
+  const saw = prop(g, 'saw', 12 * TILE, floor - 15, 16, 16, { hp: 0, ax: 12 * TILE, bx: 12 * TILE, dir: 1, state: 'on' });
+  p.x = saw.x;
+  p.y = saw.y - p.h - 8;
+  p.vy = 0;
+  const hp0 = p.hp;
+  input.press('down');
+  input.press('attack');
+  g.step();
+  input.release('attack');
+  let minVy = 0;
+  run(g, 0.2, () => (minVy = Math.min(minVy, p.vy)));
+  input.release('down');
+  assert.ok(minVy < -250, 'bounced off the saw');
+  assert.equal(p.hp, hp0, 'no damage');
 });
