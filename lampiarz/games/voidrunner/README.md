@@ -47,9 +47,9 @@ Na ekranach dotykowych pojawiają się przyciski (można je też włączyć/wył
 - **Dźwięk otoczenia** (Web Audio, generowany): szum deszczu i pojedyncze krople, grzmot z opóźnieniem,
   porywy wiatru, trzask iskier, kryształki lodu, zawodzenie Pustki, buczenie maszyn sektora; osobny suwak
   „Otoczenie i pogoda” w Ustawieniach.
-- **Postać**: nowy, większy i bardziej szczegółowy sprite (hełm z wizjerem i grzebieniem, antena, rdzeń
-  energii, naramienniki, nakolanniki, świecące podeszwy, plecak z kontrolkami), kolorowa obwódka, zawsze
-  oświetlona, z poświatą na podłodze.
+- **Postać**: Wędrowiec — ciemna sylwetka w kapturze i postrzępionym płaszczu (powiewa przy biegu, unosi
+  się przy spadaniu), zużyty pancerz pod spodem; świeci tylko szczelina wizjera, mały rdzeń i ostrze.
+  Czytelność daje cienka zimna krawędź światła i lekkie doświetlenie, a nie neonowa obwódka.
 - **Czytelność**: jaśniejsze krawędzie i obrys wszystkiego, po czym można chodzić, przyciemnione tło,
   minimapa pomieszczenia z wrogami, przeszkodami i wyjściem, strzałka do otwartego wyjścia poza ekranem.
 - **Obrona (Q)**: tarcza zatrzymuje z przodu ciosy wrogów, pociski, wybuchy i promienie bossów kosztem energii

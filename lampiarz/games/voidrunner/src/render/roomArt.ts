@@ -47,6 +47,8 @@ export function renderRoom(grid: RoomGrid, area: number, seed: number, skip: Set
   const t = (x: number, y: number) => (x < 0 || y < 0 || x >= grid.w || y >= grid.h ? T_SOLID : skip.has(y * grid.w + x) ? T_EMPTY : grid.tiles[y * grid.w + x]);
   const solid = (x: number, y: number) => t(x, y) === T_SOLID || t(x, y) === T_BREAK;
   anims = [];
+  // keep the area around the entrance, the exit and the objects free of big scenery and clutter
+  const busy = (x: number, y: number) => grid.marks.some((m) => ['P', 'X', 'O', 'C', 'S', 'T'].includes(m.m) && Math.abs(m.x - x) <= (m.m === 'X' || m.m === 'P' ? 2 : 1) && Math.abs(m.y - y) <= 2);
   /** distance (px) from a point down to the next floor */
   const fallTo = (px0: number, py0: number) => {
     const tx = Math.floor(px0 / TILE);
@@ -91,7 +93,7 @@ export function renderRoom(grid: RoomGrid, area: number, seed: number, skip: Set
         if (!solid(x, y + 1) || !solid(x + 3, y + 1)) continue;
         let free = true;
         for (let yy = y - 4; yy <= y && free; yy++) for (let xx = x; xx <= x + 3; xx++) if (t(xx, yy) !== T_EMPTY) free = false;
-        if (free) spots.push({ x, y });
+        if (free && !busy(x, y) && !busy(x + 3, y)) spots.push({ x, y });
       }
     const n = Math.max(1, Math.floor(grid.w / 16));
     const placed: { x: number; y: number }[] = [];
@@ -193,7 +195,7 @@ export function renderRoom(grid: RoomGrid, area: number, seed: number, skip: Set
       if (t(x, y) !== T_EMPTY) continue;
       const floor = solid(x, y + 1) && t(x, y + 1) !== T_BREAK;
       const ceil = solid(x, y - 1);
-      if (floor && t(x, y - 1) === T_EMPTY && r() < 0.24) floorProp(bc, x * TILE, (y + 1) * TILE, area, r, lights);
+      if (floor && t(x, y - 1) === T_EMPTY && r() < 0.24 && !busy(x, y)) floorProp(bc, x * TILE, (y + 1) * TILE, area, r, lights);
       if (ceil && r() < 0.2) ceilingProp(bc, x * TILE, y * TILE, area, r, lights);
       if (!floor && !ceil && (solid(x - 1, y) || solid(x + 1, y)) && r() < 0.09) wallProp(bc, x * TILE, y * TILE, area, solid(x - 1, y) ? -1 : 1, r, lights);
     }
@@ -202,7 +204,7 @@ export function renderRoom(grid: RoomGrid, area: number, seed: number, skip: Set
   for (let y = 1; y < grid.h - 1; y++)
     for (let x = 1; x < grid.w - 1; x++) {
       if (t(x, y) !== T_EMPTY || !solid(x, y + 1)) continue;
-      if (r() < 0.55) clutter(c, x * TILE, (y + 1) * TILE, area, r);
+      if (r() < 0.55 && !busy(x, y)) clutter(c, x * TILE, (y + 1) * TILE, area, r);
     }
   // ---------------------------------------------------------------- posters, panels and pipes with valves on the back wall
   for (let i = 0; i < grid.w / 5; i++) {
@@ -424,14 +426,15 @@ function floorProp(c: Ctx, X: number, Y: number, area: number, r: () => number, 
   const metal = '#2c3448';
   if (area === 0) {
     if (k < 0.3) {
-      // crates
-      rect(c, X + 1, Y - 10, 12, 10, '#3a3426');
-      rect(c, X + 1, Y - 10, 12, 1, '#5a5038');
-      line(c, X + 2, Y - 9, X + 12, Y - 1, '#2a2418');
-      line(c, X + 12, Y - 9, X + 2, Y - 1, '#2a2418');
-      if (r() < 0.5) {
-        rect(c, X + 4, Y - 17, 8, 7, '#3e3829');
-        rect(c, X + 4, Y - 17, 8, 1, '#5a5038');
+      // a row of rusty lockers (scenery only — breakable crates are their own objects)
+      for (let i = 0; i < 2; i++) {
+        const lx = X + 1 + i * 7;
+        rect(c, lx, Y - 18, 6, 18, '#252b3a');
+        rect(c, lx, Y - 18, 6, 1, '#3e4660');
+        rect(c, lx + 1, Y - 15, 4, 1, '#14171f');
+        rect(c, lx + 1, Y - 13, 4, 1, '#14171f');
+        px(c, lx + 4, Y - 9, '#8a93ad');
+        if (r() < 0.4) rect(c, lx, Y - 6, 6, 1, rgba('#7a3a2a', 0.6)); // rust
       }
     } else if (k < 0.55) {
       // console with a glowing screen
@@ -450,11 +453,12 @@ function floorProp(c: Ctx, X: number, Y: number, area: number, r: () => number, 
       line(c, X + 10, Y - 12, X + 14, Y - 10, shade(metal, 20));
       px(c, X + 14, Y - 9, '#ff4a5a');
     } else {
-      // barrels
-      rect(c, X + 3, Y - 12, 9, 12, '#3a2a30');
-      rect(c, X + 3, Y - 9, 9, 1, '#1d1418');
-      rect(c, X + 3, Y - 4, 9, 1, '#1d1418');
-      rect(c, X + 4, Y - 12, 1, 12, '#5a4048');
+      // a pile of pipes on the floor
+      for (let i = 0; i < 3; i++) {
+        rect(c, X + 1, Y - 3 - i * 3, 14 - i * 3, 3, ['#2c3448', '#323b52', '#3a4560'][i]);
+        rect(c, X + 1, Y - 3 - i * 3, 14 - i * 3, 1, '#4e5a78');
+        px(c, X + 14 - i * 3, Y - 2 - i * 3, '#14171f');
+      }
     }
   } else if (area === 1) {
     if (k < 0.4) {

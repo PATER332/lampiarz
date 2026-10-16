@@ -237,9 +237,9 @@ export const PERMS: PermDef[] = [
 
 export type CosmeticId = 'standard' | 'karmazyn' | 'zloto' | 'widmo';
 
-export const COSMETICS: Record<CosmeticId, { name: string; cost: number; armor: string; armorHi: string; glow: string; visor: string }> = {
-  standard: { name: 'Prototyp', cost: 0, armor: '#6878a0', armorHi: '#c4d4f0', glow: '#3ee6ff', visor: '#9ff6ff' },
-  karmazyn: { name: 'Karmazyn', cost: 30, armor: '#6a2a38', armorHi: '#c25466', glow: '#ff3d5e', visor: '#ffb0bc' },
-  zloto: { name: 'Złoty Pancerz', cost: 45, armor: '#6e5628', armorHi: '#d4b060', glow: '#ffd23e', visor: '#fff0b0' },
-  widmo: { name: 'Widmo', cost: 60, armor: '#4a3d60', armorHi: '#a896c8', glow: '#c45cff', visor: '#f0dcff' },
+export const COSMETICS: Record<CosmeticId, { name: string; cost: number; armor: string; armorHi: string; glow: string; visor: string; cloak: string }> = {
+  standard: { name: 'Wędrowiec', cost: 0, armor: '#3e4658', armorHi: '#8a96b0', glow: '#4fdcff', visor: '#bff6ff', cloak: '#29253a' },
+  karmazyn: { name: 'Karmazyn', cost: 30, armor: '#4a2a32', armorHi: '#a85a68', glow: '#ff3d5e', visor: '#ffc4cc', cloak: '#2a1219' },
+  zloto: { name: 'Złoty Pancerz', cost: 45, armor: '#4e4230', armorHi: '#b89a5e', glow: '#ffd23e', visor: '#fff2c0', cloak: '#231d14' },
+  widmo: { name: 'Widmo', cost: 60, armor: '#3c3450', armorHi: '#9488b8', glow: '#c45cff', visor: '#f2e0ff', cloak: '#1c1428' },
 };

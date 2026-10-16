@@ -52,8 +52,9 @@ class Outliner {
       rc.fillStyle = rim;
       rc.fillRect(0, 0, s, s);
       const a0 = target.globalAlpha;
-      target.globalAlpha = a0 * 0.4;
-      for (const [ox, oy] of [[-2, 0], [2, 0], [0, -2], [0, 2], [-1, -1], [1, -1], [-1, 1], [1, 1]]) target.drawImage(this.rimCv!, bx + ox, by + oy);
+      // a thin, faint rim of cold light from above-left (the hero reads without glowing)
+      target.globalAlpha = a0 * 0.35;
+      for (const [ox, oy] of [[-2, -1], [-1, -2], [0, -2]]) target.drawImage(this.rimCv!, bx + ox, by + oy);
       target.globalAlpha = a0;
     }
     for (const [ox, oy] of [[-1, 0], [1, 0], [0, -1], [0, 1]]) target.drawImage(this.sil, bx + ox, by + oy);
@@ -291,14 +292,15 @@ export class Renderer {
     for (const tr of this.trail) tr.t += dt;
     this.trail = this.trail.filter((tr) => tr.t < 0.22);
     for (const tr of this.trail) {
+      // dash after-images: dark echoes of the silhouette with a faint edge of the suit's light
       c.save();
       const ka = 1 - tr.t / 0.22;
-      c.globalAlpha = 0.35 * ka;
+      c.globalAlpha = 0.45 * ka;
+      rect(c, tr.x + 1, tr.y + 6, p.w - 2, p.h - 8, COSMETICS[g.cosmetic].cloak);
+      rect(c, tr.x + 2, tr.y - 4, p.w - 4, 9, COSMETICS[g.cosmetic].cloak);
       c.globalCompositeOperation = 'lighter';
-      rect(c, tr.x + 1, tr.y + 4, p.w - 2, p.h - 6, col);
-      rect(c, tr.x + 2, tr.y - 3, p.w - 4, 6, col);
-      c.globalAlpha = 0.6 * ka;
-      rect(c, tr.x + p.w / 2 - 1, tr.y + 2, 2, p.h - 4, '#ffffff');
+      c.globalAlpha = 0.3 * ka;
+      rect(c, tr.x + (tr.facing > 0 ? p.w - 1 : 0), tr.y - 2, 1, p.h - 2, col);
       c.restore();
     }
     const chargeK = p.chargeT > 0.12 && g.input.down('attack') ? Math.min(1, p.chargeT / g.chargeTime()) : 0;
@@ -322,14 +324,14 @@ export class Renderer {
         c.globalCompositeOperation = 'lighter';
         c.globalAlpha = 1 - (gy - (p.y + p.h)) / 40;
         const gg = c.createRadialGradient(p.x + p.w / 2, gy, 0, p.x + p.w / 2, gy, 22);
-        gg.addColorStop(0, rgba(col, 0.35));
+        gg.addColorStop(0, rgba(col, 0.12));
         gg.addColorStop(1, rgba(col, 0));
         c.fillStyle = gg;
         c.fillRect(p.x + p.w / 2 - 22, gy - 6, 44, 8);
         c.restore();
       }
     }
-    this.outline.draw(c, p.x + p.w / 2, p.y + p.h / 2 - 4, '#020308', (cc) => drawPlayer(cc, p, g.cosmetic, g.weapon, t, chargeK), p.hurtT > 0.12 ? 0.8 : 0, col);
+    this.outline.draw(c, p.x + p.w / 2, p.y + p.h / 2 - 4, '#020308', (cc) => drawPlayer(cc, p, g.cosmetic, g.weapon, t, chargeK), p.hurtT > 0.12 ? 0.8 : 0, '#a8b8d8');
 
     // ---- energy shield while guarding (white rim = parry window)
     if (p.blocking || p.blockFx > 0) {
@@ -486,8 +488,9 @@ export class Renderer {
       const ey = (g.room.exit.y - 1) * TILE - cy;
       if (ex < 8 || ex > VIEW_W - 8 || ey < 8 || ey > VIEW_H - 8) {
         // kept clear of the HUD corners (sector name top right, minimap bottom right)
-        const mx = Math.max(14, Math.min(VIEW_W - 14, ex));
-        const my = Math.max(34, Math.min(VIEW_H - 44, ey));
+        let mx = Math.max(14, Math.min(VIEW_W - 14, ex));
+        const my = Math.max(14, Math.min(VIEW_H - 44, ey));
+        if (my < 50) mx = Math.min(mx, VIEW_W - 130); // the sector name / weather / pips live up there
         const ang = Math.atan2(ey - my, ex - mx);
         const pulse = 0.6 + Math.sin(t * 6) * 0.3;
         c.save();
@@ -594,7 +597,7 @@ export class Renderer {
     };
     const p = g.player;
     hole(p.x + p.w / 2, p.y + p.h / 2, 92, 0.85);
-    hole(p.x + p.w / 2, p.y + p.h / 2 - 4, 30, 1); // the hero is always fully lit
+    hole(p.x + p.w / 2, p.y + p.h / 2 - 4, 26, 0.55); // a little extra light so the silhouette reads
     for (const L of art.lights) {
       const f = L.flicker ? (Math.sin(t * 13 + L.x) > 1 - L.flicker * 2 ? 0.55 : 1) : 1;
       hole(L.x, L.y, L.r, Math.min(1, L.a * 1.6) * f);

@@ -212,3 +212,25 @@ button { font: inherit; color: inherit; }
 @media (max-width: 760px) { .minimap canvas { display: none; } }
 
 .area-sub.weather { color: #9fd8ff; margin-top: 2px; }
+
+/* touch layout fixes: pause button at the top centre, no weapon box under the thumbs */
+.touch .tp { right: auto; left: 14px; top: 126px; width: 40px; height: 40px; }
+.vr-hud.touch-on .hud-bl { display: none; }
+.vr-hud.touch-on .combo { top: 112px; }
+.rotate-hint { display: none; position: absolute; left: 50%; top: 22%; transform: translateX(-50%); color: var(--muted); font-size: 13px; letter-spacing: 0.08em; text-align: center; width: 80vw; }
+@media (orientation: portrait) and (max-width: 600px) {
+  .vr-hud.touch-on .rotate-hint { display: block; }
+}
+/* narrow phones: smaller buttons that never overlap */
+@media (max-width: 520px) {
+  .touch .tl { left: 10px; bottom: 24px; width: 56px; height: 56px; }
+  .touch .tr { left: 72px; bottom: 24px; width: 56px; height: 56px; }
+  .touch .td { left: 41px; bottom: 88px; width: 42px; height: 42px; }
+  .touch .tj { right: 10px; bottom: 60px; width: 58px; height: 58px; }
+  .touch .ta { right: 74px; bottom: 20px; width: 60px; height: 60px; }
+  .touch .tdash { right: 80px; bottom: 88px; width: 46px; height: 46px; }
+  .touch .tk { right: 140px; bottom: 22px; width: 46px; height: 46px; }
+  .touch .th { right: 140px; bottom: 76px; width: 40px; height: 40px; }
+  .touch .tq { right: 190px; bottom: 44px; width: 44px; height: 44px; }
+  .touch .te { right: 20px; bottom: 126px; width: 40px; height: 40px; }
+}

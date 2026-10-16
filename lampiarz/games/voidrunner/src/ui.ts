@@ -294,7 +294,8 @@ export class App {
           ? `<div class="boss-bar"><div class="name">${esc(g.enemyName(boss) || bossName(boss.boss))}<span class="phase">${boss.phase > 1 ? 'faza ' + boss.phase : ''}</span></div><div class="bar"><i style="width:calc(${(boss.hp / boss.maxHp) * 100}% - 2px)"></i></div></div>`
           : ''
       }
-      <div class="toast-wrap"></div>`;
+      <div class="toast-wrap"></div>
+      <div class="rotate-hint">Obróć telefon poziomo, żeby grać wygodniej</div>`;
     // keep toasts across HUD rebuilds
     const tw = this.hud.querySelector('.toast-wrap') as HTMLElement;
     if (this.toastWrap) for (const ch of [...this.toastWrap.children]) tw.appendChild(ch);
@@ -1008,6 +1009,8 @@ export class App {
     const s = this.meta.settings.touch;
     const coarse = window.matchMedia?.('(pointer: coarse)').matches && navigator.maxTouchPoints > 0;
     this.touch.hidden = !(this.mode === 'play' && (s === 'on' || (s === 'auto' && coarse)));
+    // with on-screen buttons the bottom corners belong to the thumbs
+    this.hud.classList.toggle('touch-on', !this.touch.hidden);
   }
 }
 

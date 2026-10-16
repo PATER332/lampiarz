@@ -22,10 +22,13 @@ export function drawPlayer(c: Ctx, p: Player, cos: CosmeticId, weapon: WeaponId,
     // collapsed on the ground, glow fading out
     const k = Math.min(1, at * 3);
     c.globalAlpha = Math.max(0.2, 1 - at * 0.4);
-    rect(c, -10, -4, 20, 4, C.armor);
-    rect(c, -10, -4, 20, 1, C.armorHi);
-    rect(c, 8, -6, 5, 5, C.armor);
-    px(c, 10, -4, rgba(C.visor, 1 - k * 0.8));
+    // a heap of cloak on the floor, the visor slowly going dark
+    rect(c, -11, -4, 22, 4, C.cloak);
+    rect(c, -11, -4, 22, 1, shade(C.cloak, 18));
+    for (let i = -11; i < 11; i += 3) px(c, i, -1, shade(C.cloak, -12));
+    rect(c, 7, -6, 6, 5, shade(C.cloak, 8));
+    rect(c, 9, -4, 3, 1, rgba(C.visor, 1 - k * 0.85));
+    rect(c, -6, -3, 6, 2, C.armor);
     c.restore();
     return;
   }
@@ -101,201 +104,182 @@ export function drawPlayer(c: Ctx, p: Player, cos: CosmeticId, weapon: WeaponId,
   if (a === 'special') armAng = weapon === 'heavy' ? 1.4 : -0.1;
 
   const y0 = bob + squash;
-  // palette: five tones of armour lit from the upper left, plus the suit's energy colour
-  const A0 = shade(C.armor, -48); // deep shadow
-  const A1 = shade(C.armor, -22); // shadow
-  const A2 = shade(C.armor, 8); // base
-  const A3 = shade(C.armor, 40); // lit
-  const A4 = shade(C.armorHi, 20); // highlight
-  const SUIT = '#141824'; // under-suit
-  const SUIT2 = '#222838';
-  const G = C.glow;
   const L = lean;
+  // Palette: a dark, worn suit under a hooded cloak. The only bright things are the visor slit,
+  // a small core light and the blade — the hero is a silhouette that belongs to the dark complex.
+  const A0 = shade(C.armor, -34);
+  const A1 = shade(C.armor, -16);
+  const A2 = C.armor;
+  const A3 = shade(C.armor, 20);
+  const A4 = C.armorHi;
+  const K0 = shade(C.cloak, -10); // cloak shadow
+  const K1 = C.cloak;
+  const K2 = shade(C.cloak, 16); // cloak lit fold
+  const K3 = shade(C.cloak, 34); // cloak edge highlight
+  const G = C.glow;
 
-  // ---- scarf: two pixels thick, long, flowing behind (the silhouette's signature)
-  const sway = Math.sin(t * 6) * 1.5;
-  const trail = Math.min(7, Math.abs(p.vx) / 28 + (a === 'dash' ? 5 : 0));
-  const lift = p.vy < -50 ? 0.35 : p.vy > 60 ? -0.35 : a === 'wall' ? -0.6 : 0;
-  for (let i = 0; i < 8 + trail; i++) {
-    const sx = -4 - i + L;
-    const sy = -20 + y0 + Math.round(Math.sin(t * 8 - i * 0.7) * (0.5 + i * 0.14) + (i > 3 ? sway * 0.35 : 0) + i * lift);
-    const col = i < 2 ? G : shade(G, -30 - i * 7);
-    px(c, sx, sy, col);
-    px(c, sx, sy + 1, shade(col, -45));
-    if (i > 4 && i % 3 === 0) px(c, sx, sy + 2, shade(col, -70));
+  // ---- cloak, back panel: hangs from the shoulders, sweeps back with speed, tattered hem
+  const air = a === 'jump' || a === 'fall' || a === 'dash' || a === 'wall';
+  const speed = Math.min(1, Math.abs(p.vx) / 120);
+  const sweep = speed * 0.55 + (a === 'dash' ? 0.9 : 0) + (a === 'jump' ? 0.25 : 0);
+  const rise = p.vy > 80 ? Math.min(5, (p.vy - 80) / 50) : 0; // falling: the hem lifts
+  const len = Math.round(16 - rise - (a === 'wall' ? 3 : 0));
+  for (let r = 0; r < len; r++) {
+    const yy = -21 + y0 + r;
+    const wave = Math.sin(t * 7 - r * 0.45) * (0.4 + r * 0.06) * (air || speed > 0.2 ? 1.4 : 0.6);
+    // A-line: the cloak widens towards the hem, more so when running
+    const xl = Math.round(-4 + L - r * (0.24 + sweep * 0.5) + wave);
+    const xr = Math.round(1 + L + r * 0.12 - r * sweep * 0.3);
+    for (let x = xl; x <= xr; x++) {
+      const hem = r >= len - 3;
+      // ragged hem: deterministic gaps per column
+      if (hem && ((x * 7 + r * 3) & 3) === 0) continue;
+      if (r === len - 1 && (x & 1)) continue;
+      const fold = (x - xl + Math.floor(r / 3)) % 4 === 0;
+      px(c, x, yy, x === xl ? K0 : fold ? K2 : K1);
+    }
+    if (r > 2 && r < len - 3) px(c, xl, yy, K0);
   }
 
-  // ---- legs (thigh, knee guard, shin, boot with a glowing sole)
+  // ---- legs: slim armoured greaves, dark boots
   const drawLeg = (dx: number, swing: number, back: boolean) => {
-    const k = back ? -16 : 0;
+    const k = back ? -14 : 0;
     if (tuck) {
-      rect(c, dx - 1, -11 + y0, 4, 5, shade(A1, k));
-      rect(c, dx - 1, -11 + y0, 4, 1, shade(A3, k));
-      rect(c, dx + 2, -8 + y0, 4, 3, shade(A2, k)); // knee forward
-      px(c, dx + 4, -8 + y0, shade(A4, k));
-      rect(c, dx + 1, -5 + y0, 5, 2, shade(A1, k)); // boot tucked
-      rect(c, dx + 1, -3 + y0, 5, 1, rgba(G, back ? 0.4 : 0.8));
+      rect(c, dx - 1, -11 + y0, 3, 4, shade(A1, k));
+      rect(c, dx + 1, -8 + y0, 4, 3, shade(A2, k));
+      px(c, dx + 3, -8 + y0, shade(A3, k));
+      rect(c, dx + 1, -5 + y0, 4, 2, shade(A0, k));
       return;
     }
     const off = Math.round(swing * 3);
     const lf = swing > 0.3 ? 1 : 0;
-    // thigh
-    rect(c, dx - 1, -11 + y0, 4, 5, shade(A1, k));
-    rect(c, dx - 1, -11 + y0, 1, 5, shade(A3, k));
-    rect(c, dx, -11 + y0, 3, 2, shade(A2, k)); // thigh plate
-    rect(c, dx, -11 + y0, 3, 1, shade(A4, k));
-    // knee guard
+    rect(c, dx - 1, -11 + y0, 3, 5, shade(A1, k)); // thigh
+    px(c, dx - 1, -11 + y0, shade(A3, k));
     const kx = dx + Math.round(off * 0.5);
-    rect(c, kx - 1, -7 + y0 - lf, 4, 2, shade(A3, k));
-    px(c, kx + 1, -7 + y0 - lf, shade(A4, k));
-    // shin
-    rect(c, kx - 1, -5 + y0 - lf, 4, 3, shade(A2, k));
-    rect(c, kx - 1, -5 + y0 - lf, 1, 3, shade(A3, k));
-    rect(c, kx + 2, -5 + y0 - lf, 1, 3, shade(A1, k));
-    px(c, kx + 2, -4 + y0 - lf, rgba(G, back ? 0.35 : 0.75)); // shin light
-    // boot
-    rect(c, dx - 1 + off, -2 - lf - legLift, 5, 2, shade(A1, k));
-    rect(c, dx - 1 + off, -2 - lf - legLift, 5, 1, shade(A3, k));
-    rect(c, dx + 3 + off, -2 - lf - legLift, 1, 1, shade(A3, k)); // toe cap
-    rect(c, dx - 1 + off, -lf - legLift, 5, 1, rgba(G, back ? 0.35 : 0.85)); // sole
+    rect(c, kx - 1, -7 + y0 - lf, 3, 2, shade(A2, k)); // knee plate
+    px(c, kx, -7 + y0 - lf, shade(A4, k));
+    rect(c, kx - 1, -5 + y0 - lf, 3, 3, shade(A1, k)); // shin
+    px(c, kx - 1, -5 + y0 - lf, shade(A2, k));
+    rect(c, dx - 1 + off, -2 - lf - legLift, 4, 2, shade(A0, k)); // boot
+    px(c, dx + 2 + off, -2 - lf - legLift, shade(A2, k));
+    if (!back) px(c, dx + off, -lf - legLift, rgba(G, 0.35)); // faint sole light
   };
   drawLeg(-2, -legA, true);
 
-  // ---- back arm (behind the body)
-  rect(c, -6 + L, -17 + y0, 2, 4, A0);
-  rect(c, -6 + L, -13 + y0, 2, 3, shade(A1, -8));
-  px(c, -6 + L, -10 + y0, rgba(G, 0.4));
+  // ---- back arm
+  rect(c, -5 + L, -18 + y0, 2, 4, shade(A0, -6));
+  rect(c, -5 + L, -14 + y0, 2, 3, shade(A0, -10));
 
-  // ---- backpack: two thruster pods with status lights
-  rect(c, -9 + L, -20 + y0, 4, 10, '#171b27');
-  rect(c, -9 + L, -20 + y0, 4, 1, A2);
-  rect(c, -9 + L, -19 + y0, 1, 8, A1);
-  rect(c, -8 + L, -17 + y0, 2, 1, Math.floor(t * 3) % 2 ? G : shade(G, -60));
-  rect(c, -8 + L, -15 + y0, 2, 1, p.airJumps > 0 ? G : '#ff4a5a'); // double jump ready
-  rect(c, -9 + L, -11 + y0, 4, 1, '#0a0c12'); // nozzle
-  px(c, -8 + L, -10 + y0, a === 'jump' || a === 'dash' ? '#ffffff' : shade(G, -40));
-  // thruster flame while dashing or rising fast
-  if (a === 'dash' || (a === 'jump' && p.vy < -200)) {
-    const fl = 3 + Math.floor((t * 40) % 3);
-    rect(c, -9 + L - fl, -13 + y0, fl, 3, rgba(G, 0.75));
-    rect(c, -9 + L - fl + 1, -12 + y0, fl - 1, 1, '#ffffff');
-    px(c, -10 + L - fl, -12 + y0, rgba('#ffffff', 0.5));
+  // thruster burst from under the cloak while dashing / rising fast
+  if (a === 'dash' || (a === 'jump' && p.vy < -220)) {
+    const fl = 2 + Math.floor((t * 40) % 3);
+    rect(c, -6 + L - fl, -12 + y0, fl, 2, rgba(G, 0.55));
+    px(c, -6 + L - fl - 1, -12 + y0, rgba('#ffffff', 0.4));
   }
   if (a === 'wall') {
-    // hand on the wall, sparks under the boot
-    line(c, -4, -16 + y0, -9, -18 + y0, A1);
-    rect(c, -10, -19 + y0, 2, 3, A3);
-    if (Math.floor(t * 24) % 3 === 0) px(c, -9, -1, '#ffcf8a');
+    // hand dragging on the wall, sparks under the boot
+    line(c, -3, -17 + y0, -8, -19 + y0, A1);
+    rect(c, -9, -20 + y0, 2, 2, A2);
+    if (Math.floor(t * 24) % 3 === 0) px(c, -8, -1, '#ffcf8a');
   }
 
-  // ---- torso
-  rect(c, -5 + L, -20 + y0, 10, 10, A2);
-  rect(c, -5 + L, -20 + y0, 10, 1, A4); // collar highlight
-  rect(c, -5 + L, -19 + y0, 2, 7, A3); // lit side
-  rect(c, 3 + L, -19 + y0, 2, 8, A1); // shadow side
-  rect(c, 4 + L, -18 + y0, 1, 6, A0);
-  // chest plate edges and abdominal plates
-  rect(c, -3 + L, -16 + y0, 6, 1, A1);
-  rect(c, -2 + L, -14 + y0, 5, 1, shade(A1, -10));
-  rect(c, -2 + L, -12 + y0, 5, 1, shade(A1, -10));
-  px(c, -4 + L, -18 + y0, '#ffffff');
-  // the energy core: the brightest point on the body
-  rect(c, 0 + L, -19 + y0, 3, 3, SUIT);
-  rect(c, 1 + L, -18 + y0, 1, 1, '#ffffff');
-  px(c, 0 + L, -18 + y0, G);
-  px(c, 2 + L, -18 + y0, G);
-  px(c, 1 + L, -19 + y0, G);
-  px(c, 1 + L, -17 + y0, G);
-  // energy lines running down the suit
-  rect(c, -3 + L, -15 + y0, 1, 4, rgba(G, 0.8));
-  rect(c, 3 + L, -15 + y0, 1, 3, rgba(G, 0.45));
-  // belt with pouches and a buckle light
-  rect(c, -5 + L, -11 + y0, 10, 2, SUIT);
-  rect(c, -5 + L, -11 + y0, 10, 1, SUIT2);
-  rect(c, -4 + L, -11 + y0, 2, 2, A1);
-  rect(c, 2 + L, -11 + y0, 2, 2, A1);
-  px(c, 0 + L, -10 + y0, G);
+  // ---- torso: worn chest plate under the mantle
+  rect(c, -4 + L, -18 + y0, 8, 8, A1);
+  rect(c, -3 + L, -18 + y0, 6, 5, A2);
+  rect(c, -3 + L, -18 + y0, 1, 5, A3);
+  rect(c, 2 + L, -17 + y0, 2, 6, A0);
+  rect(c, -2 + L, -14 + y0, 4, 1, A0); // plate seam
+  // small core light, the heart of the machine
+  px(c, 1 + L, -16 + y0, G);
+  px(c, 1 + L, -15 + y0, rgba(G, 0.5));
+  // belt with a pouch and a strap across
+  rect(c, -4 + L, -11 + y0, 8, 2, '#121318');
+  rect(c, 1 + L, -11 + y0, 2, 2, shade(A1, -6));
+  px(c, -1 + L, -11 + y0, shade(A3, -10));
+  line(c, -3 + L, -18 + y0, 3 + L, -12 + y0, '#2a2420'); // leather strap
   drawLeg(1, legA, false);
 
-  // ---- helmet: big visor, crest fin, cheek vent, chin guard
-  const hy = -28 + y0;
-  rect(c, -4 + L, hy + 1, 9, 7, A2);
-  rect(c, -3 + L, hy, 7, 1, A4);
-  rect(c, -4 + L, hy + 1, 1, 6, A3);
-  rect(c, -3 + L, hy + 1, 2, 2, A4); // dome highlight
-  px(c, -2 + L, hy + 1, '#ffffff');
-  rect(c, 4 + L, hy + 2, 1, 5, A1);
-  rect(c, -4 + L, hy + 6, 9, 2, A1); // jaw
-  rect(c, -1 + L, hy + 7, 5, 1, A0); // chin guard
-  // crest fin sweeping back
-  rect(c, -3 + L, hy - 2, 4, 2, A3);
-  rect(c, -5 + L, hy - 1, 2, 2, A2);
-  px(c, -1 + L, hy - 2, G);
-  px(c, -5 + L, hy - 1, shade(G, -30));
-  // cheek vent
-  rect(c, -3 + L, hy + 4, 2, 1, A0);
-  rect(c, -3 + L, hy + 5, 2, 1, A0);
-  // visor: wide, glowing, with an eye line and a glint
-  rect(c, 0 + L, hy + 2, 5, 3, shade(C.visor, -70));
-  rect(c, 0 + L, hy + 3, 5, 1, C.visor);
-  rect(c, 2 + L, hy + 3, 3, 1, '#ffffff');
-  px(c, 0 + L, hy + 2, shade(C.visor, -30));
-  const gl = (t * 1.7) % 4;
-  if (gl < 0.6) px(c, Math.round(gl * 8) + L, hy + 2, '#ffffff');
-  // antenna
-  line(c, -4 + L, hy + 1, -6 + L, hy - 3, A1);
-  px(c, -6 + L, hy - 4, Math.floor(t * 2) % 2 ? '#ff4a5a' : shade('#ff4a5a', -80));
+  // ---- mantle: the cloak's shoulder cape over the chest
+  rect(c, -5 + L, -21 + y0, 10, 4, K1);
+  rect(c, -5 + L, -21 + y0, 10, 1, K2);
+  rect(c, -5 + L, -21 + y0, 2, 4, K2);
+  rect(c, 3 + L, -20 + y0, 2, 3, K0);
+  px(c, 4 + L, -17 + y0, K0);
+  px(c, -5 + L, -17 + y0, K0);
+  // clasp
+  px(c, 2 + L, -19 + y0, shade(A4, -20));
 
-  // ---- shoulder pad (back shoulder, layered)
-  rect(c, -6 + L, -21 + y0, 5, 4, A3);
-  rect(c, -6 + L, -21 + y0, 5, 1, A4);
-  px(c, -6 + L, -21 + y0, '#ffffff');
-  rect(c, -6 + L, -18 + y0, 5, 1, A0);
-  rect(c, -5 + L, -20 + y0, 3, 1, rgba(G, 0.75));
+  // ---- hood with a glowing visor slit in the dark opening
+  const hy = -28 + y0;
+  rect(c, -3 + L, hy, 6, 1, K2);
+  rect(c, -4 + L, hy + 1, 8, 7, K1);
+  rect(c, -4 + L, hy + 1, 2, 6, K2); // lit side of the hood
+  px(c, -3 + L, hy + 1, K3);
+  rect(c, -5 + L, hy + 2, 1, 5, K0);
+  px(c, -6 + L, hy + 3, K0); // peak of the hood falling back
+  px(c, -6 + L, hy + 4, K0);
+  // face opening
+  rect(c, 0 + L, hy + 2, 4, 5, '#06070b');
+  rect(c, 3 + L, hy + 2, 1, 5, K1); // hood rim in front
+  px(c, 3 + L, hy + 2, K2);
+  // visor slit: the one bright detail of the face, with a soft glow in the dark hood
+  rect(c, 0 + L, hy + 4, 3, 1, C.visor);
+  px(c, 2 + L, hy + 4, '#ffffff');
+  px(c, -1 + L, hy + 4, rgba(G, 0.45));
+  c.save();
+  c.globalCompositeOperation = 'lighter';
+  glow(c, 1.5 + L, hy + 4.5, 5, G, 0.35);
+  c.restore();
+  const gl = (t * 0.9) % 5;
+  if (gl < 0.25) px(c, 1 + L, hy + 3, rgba('#ffffff', 0.7)); // rare glint
+  // breathing filter under the slit
+  px(c, 1 + L, hy + 6, shade(A1, -10));
+  px(c, 2 + L, hy + 6, shade(A1, -10));
 
   // ---- front arm + weapon
   const sx = 2 + lean;
-  const sy = -17 + y0;
+  const sy = -18 + y0;
   const ex = sx + Math.cos(armAng) * 3;
   const ey = sy + Math.sin(armAng) * 3;
   const ax = Math.round(sx + Math.cos(armAng) * 6);
   const ay = Math.round(sy + Math.sin(armAng) * 6);
-  // front shoulder pad
-  rect(c, sx - 2, sy - 2, 4, 3, shade(C.armorHi, -8));
-  px(c, sx - 2, sy - 2, '#ffffff');
-  // upper arm + elbow + gauntlet with a glowing strip
-  line(c, sx, sy, ex, ey, C.armor);
-  line(c, sx, sy + 1, ex, ey + 1, shade(C.armor, -22));
-  line(c, ex, ey, ax, ay, shade(C.armor, 12));
-  line(c, ex, ey + 1, ax, ay + 1, shade(C.armor, -16));
-  px(c, ex, ey, C.armorHi);
-  px(c, (ex + ax) / 2, (ey + ay) / 2, C.glow);
-  rect(c, ax - 1, ay - 1, 3, 3, shade(C.armorHi, -14)); // fist
-  px(c, ax, ay - 1, '#ffffff');
+  // upper arm (cloth sleeve) and armoured forearm
+  line(c, sx, sy, ex, ey, K1);
+  line(c, sx, sy + 1, ex, ey + 1, K0);
+  line(c, ex, ey, ax, ay, A2);
+  line(c, ex, ey + 1, ax, ay + 1, A0);
+  px(c, ex, ey, A3);
+  rect(c, ax - 1, ay - 1, 2, 2, A3); // gauntlet
+  px(c, ax - 1, ay - 1, A4);
   if (weapon === 'cannon') {
     const bx = ax;
     const by = ay;
-    rect(c, bx - 1, by - 2, 8, 4, '#2a3040');
-    rect(c, bx - 1, by - 2, 8, 1, '#4a5470');
-    rect(c, bx + 6, by - 1, 2, 2, C.glow);
-    if (chargeK > 0) glow(c, bx + 8, by, 4 + chargeK * 6, C.glow, 0.3 + chargeK * 0.4);
+    rect(c, bx - 1, by - 2, 8, 4, '#232731');
+    rect(c, bx - 1, by - 2, 8, 1, '#3e4454');
+    rect(c, bx + 1, by + 1, 4, 1, '#14161c');
+    rect(c, bx + 6, by - 1, 2, 2, G);
+    if (chargeK > 0) glow(c, bx + 8, by, 4 + chargeK * 6, G, 0.3 + chargeK * 0.4);
   } else {
-    const len = weapon === 'heavy' ? 15 : 12;
-    const bx = Math.round(ax + Math.cos(armAng) * len);
-    const by = Math.round(ay + Math.sin(armAng) * len);
-    // hilt
-    line(c, ax, ay, Math.round(ax - Math.cos(armAng) * 2), Math.round(ay - Math.sin(armAng) * 2), '#1a1d28');
-    // blade: glowing edge with a white core
-    line(c, ax, ay, bx, by, C.glow);
+    const blen = weapon === 'heavy' ? 15 : 12;
+    const bx = Math.round(ax + Math.cos(armAng) * blen);
+    const by = Math.round(ay + Math.sin(armAng) * blen);
+    // dark hilt with a cross guard
+    const hx = Math.round(ax - Math.cos(armAng) * 2);
+    const hy2 = Math.round(ay - Math.sin(armAng) * 2);
+    line(c, ax, ay, hx, hy2, '#14161c');
+    px(c, Math.round(ax - Math.sin(armAng)), Math.round(ay + Math.cos(armAng)), '#4a4f5c');
+    px(c, Math.round(ax + Math.sin(armAng)), Math.round(ay - Math.cos(armAng)), '#4a4f5c');
+    // energy blade
+    line(c, ax, ay, bx, by, G);
     if (weapon === 'heavy') {
-      line(c, ax + 1, ay, bx + 1, by, shade(C.glow, -40));
-      line(c, ax, ay + 1, bx, by + 1, shade(C.glow, -60));
+      line(c, ax + 1, ay, bx + 1, by, shade(G, -50));
+      line(c, ax, ay + 1, bx, by + 1, shade(G, -70));
     }
-    const mx = Math.round((ax + bx) / 2);
-    const my = Math.round((ay + by) / 2);
+    const mx = Math.round((ax + bx * 2) / 3);
+    const my = Math.round((ay + by * 2) / 3);
     line(c, ax, ay, mx, my, '#ffffff');
     if (chargeK > 0) {
-      glow(c, bx, by, 4 + chargeK * 8, C.glow, 0.25 + chargeK * 0.45);
+      glow(c, bx, by, 4 + chargeK * 8, G, 0.25 + chargeK * 0.45);
       if (chargeK >= 1 && Math.floor(t * 16) % 2 === 0) line(c, ax, ay, bx, by, '#ffffff');
     }
   }
