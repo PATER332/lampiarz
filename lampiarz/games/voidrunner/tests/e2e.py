@@ -31,6 +31,11 @@ with sync_playwright() as p:
     page.reload()
     time.sleep(1.2)
     # ---------------------------------------------------------------- title
+    snap = "document.querySelector('canvas.vr-game').toDataURL().length + ':' + document.querySelector('canvas.vr-game').toDataURL().slice(-200)"
+    a1 = ev(page, snap)
+    time.sleep(0.4)
+    check('title scene keeps animating (rain, hero, lightning)', ev(page, snap) != a1)
+    check('no errors on the title screen', not [e for e in errors if 'TUNNEL' not in e], str(errors[:2]))
     labels = [t.strip().split('\n')[0] for t in page.locator('.title-screen .btn').all_inner_texts()]
     check('title menu: Nowa gra, Kontynuuj, Ulepszenia, Ustawienia, Sterowanie', [l.upper() for l in labels] == ['NOWA GRA', 'KONTYNUUJ', 'ULEPSZENIA', 'USTAWIENIA', 'STEROWANIE'], str(labels))
     check('Kontynuuj disabled without a save', page.locator('[data-act=continue]').is_disabled())

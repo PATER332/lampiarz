@@ -50,6 +50,11 @@ Na ekranach dotykowych pojawiają się przyciski (można je też włączyć/wył
 - **Postać**: Wędrowiec — ciemna sylwetka w kapturze i postrzępionym płaszczu (powiewa przy biegu, unosi
   się przy spadaniu), zużyty pancerz pod spodem; świeci tylko szczelina wizjera, mały rdzeń i ostrze.
   Czytelność daje cienka zimna krawędź światła i lekkie doświetlenie, a nie neonowa obwódka.
+- **Wrogowie i bossowie**: każdy przeciwnik ma szczegółową sylwetkę (cieniowanie z jednego kierunku, świecące
+  oczy, ciepła krawędź światła odróżniająca wrogów od tła), czerwony znak „!” nad głową przed każdym atakiem,
+  gwiazdki ogłuszenia i pasek zdrowia w ramce. Bossowie mają nowe, dopracowane wyglądy (pancerz Matki Roju
+  z jajami i żuwaczkami, Strażnik z pierścieniem płyt i przesłoną obiektywu, kryształowe Serce Pustki z pęknięciem).
+- **Ekran tytułowy**: Wędrowiec na krawędzi dachu nad miastem, w deszczu i błyskawicach.
 - **Czytelność**: jaśniejsze krawędzie i obrys wszystkiego, po czym można chodzić, przyciemnione tło,
   minimapa pomieszczenia z wrogami, przeszkodami i wyjściem, strzałka do otwartego wyjścia poza ekranem.
 - **Obrona (Q)**: tarcza zatrzymuje z przodu ciosy wrogów, pociski, wybuchy i promienie bossów kosztem energii

@@ -261,7 +261,7 @@ export class Renderer {
       if (e.x + e.w < cx - 40 || e.x > cx + VIEW_W + 40) continue;
       const fl = e.flash > 0 && !e.dead ? 0.85 : 0;
       if (e.type === 'boss') this.outlineBig.draw(c, e.x + e.w / 2, e.y + e.h / 2 - (e.boss === 'matka' ? 6 : 0), '#020308', (cc) => drawBoss(cc, e, t), fl * 0.7);
-      else this.outline.draw(c, e.x + e.w / 2, e.y + e.h / 2, e.elite ? '#2a040c' : '#020308', (cc) => drawEnemy(cc, e, area, t), fl);
+      else this.outline.draw(c, e.x + e.w / 2, e.y + e.h / 2, e.elite ? '#2a040c' : '#020308', (cc) => drawEnemy(cc, e, area, t), fl, e.dead ? undefined : e.elite ? '#ff4a6a' : '#ffb4a0');
       if (e.type === 'shield' && !e.dead && e.guard && e.flash > 0) {
         // blocked hit: sparks of a shield bubble in front
         c.save();
@@ -281,8 +281,16 @@ export class Renderer {
         c.restore();
       }
       if (!e.dead && e.type !== 'boss' && e.hp < e.maxHp) {
-        rect(c, e.x, e.y - 5, e.w, 2, '#1a0a10');
-        rect(c, e.x, e.y - 5, Math.max(1, (e.w * e.hp) / e.maxHp), 2, e.elite ? '#ff3d5e' : '#ff6a3a');
+        // framed health bar: dark frame, fill, and a pale chunk that drains after a hit
+        const bw = Math.max(12, e.w);
+        const bx = Math.round(e.x + e.w / 2 - bw / 2);
+        const by = Math.round(e.y - 7);
+        const k = Math.max(0, e.hp / e.maxHp);
+        rect(c, bx - 1, by - 1, bw + 2, 4, '#05060a');
+        rect(c, bx, by, bw, 2, '#2a0e14');
+        if (e.flash > 0) rect(c, bx, by, Math.max(1, bw * Math.min(1, k + 0.15)), 2, '#ffe0d8');
+        rect(c, bx, by, Math.max(1, Math.round(bw * k)), 2, e.elite ? '#ff2a4a' : '#ff6a3a');
+        rect(c, bx, by, Math.max(1, Math.round(bw * k)), 1, e.elite ? '#ff8a9a' : '#ffb08a');
       }
     }
 
@@ -609,7 +617,7 @@ export class Renderer {
       if (e.dead) continue;
       if (e.type === 'boss') hole(e.x + e.w / 2, e.y + e.h / 2, 90, 0.6);
       else if (e.state === 'windup' || e.state === 'tell' || e.state === 'charge' || e.state === 'cast') hole(e.x + e.w / 2, e.y + e.h / 2, 30, 0.5);
-      else hole(e.x + e.w / 2, e.y + e.h / 2, 24, 0.45);
+      else hole(e.x + e.w / 2, e.y + e.h / 2, 30, 0.6); // hostiles are never lost in the dark
     }
     for (const h of g.hazards) {
       if (h.kind === 'laser') hole(h.x + 3, h.y + h.h / 2, h.h / 2 + 10, 0.35);

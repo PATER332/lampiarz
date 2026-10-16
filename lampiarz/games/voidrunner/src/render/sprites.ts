@@ -372,211 +372,367 @@ export function drawSlash(c: Ctx, p: Player, cos: CosmeticId, weapon: WeaponId, 
 }
 
 // ================================================================== enemies
+/** Shared enemy palette: steel lit from the upper left (4 tones) and a hostile eye colour. */
+function steel(base: string) {
+  return { d: shade(base, -40), s: shade(base, -18), b: base, l: shade(base, 26), h: shade(base, 55) };
+}
+/** A glowing eye: core pixel(s) plus a soft additive glow, so hostiles are spotted in the dark. */
+function eye(c: Ctx, x: number, y: number, col: string, w = 1, h = 1, r = 5, a = 0.5) {
+  rect(c, x, y, w, h, col);
+  c.save();
+  c.globalCompositeOperation = 'lighter';
+  glow(c, x + w / 2, y + h / 2, r, col, a);
+  c.restore();
+}
+
 export function drawEnemy(c: Ctx, e: Enemy, area: number, t: number) {
   const fx = Math.round(e.x + e.w / 2);
   const fy = Math.round(e.y + e.h);
   c.save();
-  if (e.dead) {
-    c.globalAlpha = Math.max(0, 1 - e.deathT * 2.5);
-  }
+  if (e.dead) c.globalAlpha = Math.max(0, 1 - e.deathT * 2.5);
   c.translate(fx, fy);
   if (e.facing < 0) c.scale(-1, 1);
-  const tele = e.state === 'windup' || e.state === 'tell' || e.state === 'charge' || e.state === 'cast' || e.state === 'blinkIn';
+  const tele = e.state === 'windup' || e.state === 'tell' || e.state === 'charge' || e.state === 'cast' || e.state === 'blinkIn' || e.state === 'bashTell';
   const blink = tele && Math.floor(t * 14) % 2 === 0;
-  const eyeCol = e.elite ? '#ff3d5e' : tele ? '#ffffff' : '#ff6a3a';
+  const hostile = e.elite ? '#ff2a4a' : '#ff5a3a';
+  const eyeCol = blink ? '#ffffff' : hostile;
+  const stun = e.stun > 0;
+  const ph = e.seed * 3.1;
   if (e.elite) {
+    // elites: a pulsing crimson aura and a crest of spikes
     c.save();
     c.globalCompositeOperation = 'lighter';
-    glow(c, 0, -e.h / 2, e.w + 4, '#ff3d5e', 0.25 + Math.sin(t * 5) * 0.08);
+    glow(c, 0, -e.h / 2, e.w + 6, '#ff2a4a', 0.22 + Math.sin(t * 5) * 0.08);
     c.restore();
   }
   switch (e.type) {
     case 'drone': {
-      const by = -6 + Math.round(Math.sin(t * 6 + e.seed) * 1);
-      const body = e.elite ? '#7a3a4a' : '#5a6680';
-      // rotor
-      const rw = Math.abs(Math.round(Math.cos(t * 40) * 7));
-      rect(c, -rw, by - 7, rw * 2 + 1, 1, '#8a93ad');
-      rect(c, 0, by - 6, 1, 2, '#2a3040');
-      // body
-      rect(c, -6, by - 4, 13, 8, body);
-      rect(c, -6, by - 4, 13, 1, shade(body, 30));
-      rect(c, -7, by - 1, 1, 3, shade(body, -10));
-      rect(c, 7, by - 1, 1, 3, shade(body, -10));
-      rect(c, -4, by + 4, 9, 1, shade(body, -20));
-      // eye
-      rect(c, 1, by - 2, 4, 3, '#0a0c14');
-      rect(c, 2, by - 1, 2, 1, blink ? '#ffffff' : eyeCol);
-      if (tele) glow(c, 3, by - 1, 10, '#ff4a5a', 0.35);
-      if (e.elite) rect(c, -6, by + 1, 13, 1, '#ff3d5e');
+      // armoured surveillance drone: twin rotors, sensor lens, thruster under the hull
+      const by = -6 + Math.round(Math.sin(t * 6 + ph) * 1.2);
+      const S = steel(e.elite ? '#6a3440' : area === 1 ? '#4a6460' : area === 4 ? '#54486e' : '#56627c');
+      const tilt = e.state === 'swoop' ? 1 : 0;
+      // rotor arms + blurred rotors
+      rect(c, -8, by - 5, 3, 1, S.d);
+      rect(c, 6, by - 5, 3, 1, S.d);
+      for (const rx of [-7, 7]) {
+        const rw = 2 + Math.abs(Math.round(Math.cos(t * 42 + rx) * 3));
+        rect(c, rx - rw, by - 7, rw * 2 + 1, 1, rgba('#c8d2e6', 0.55));
+        px(c, rx, by - 6, S.l);
+      }
+      // hull: rounded box with panel lines
+      rect(c, -6, by - 4 + tilt, 13, 8, S.b);
+      rect(c, -5, by - 5 + tilt, 11, 1, S.l);
+      rect(c, -6, by - 4 + tilt, 2, 7, S.l);
+      px(c, -5, by - 4 + tilt, S.h);
+      rect(c, 5, by - 3 + tilt, 2, 7, S.s);
+      rect(c, -5, by + 3 + tilt, 11, 1, S.d);
+      rect(c, -3, by - 1 + tilt, 1, 3, S.s); // panel seam
+      px(c, -1, by + 1 + tilt, S.h); // rivet
+      // sensor lens (the eye)
+      rect(c, 1, by - 3 + tilt, 5, 5, '#07080d');
+      rect(c, 1, by - 3 + tilt, 5, 1, S.d);
+      eye(c, 3, by - 1 + tilt, eyeCol, 2, 2, tele ? 9 : 5, tele ? 0.7 : 0.45);
+      px(c, 3, by - 1 + tilt, '#ffffff');
+      // thruster
+      const fl = 1 + Math.floor((t * 30 + ph) % 2);
+      rect(c, -2, by + 4 + tilt, 4, fl, rgba('#9fd8ff', 0.6));
+      // warning stripes / elite crest
+      if (e.elite) for (let i = 0; i < 3; i++) px(c, -3 + i * 2, by - 6, '#ff2a4a');
+      if (tele) for (let i = 0; i < 3; i++) line(c, 6, by - 1, 10 + i, by - 4 + i * 3, rgba('#ff4a5a', 0.6));
       break;
     }
-    case 'hunter':
     case 'larva': {
-      if (e.type === 'larva') {
-        for (let i = 0; i < 4; i++) rect(c, -5 + i * 3, -6 + Math.round(Math.sin(t * 12 + i) * 1), 3, 5, i % 2 ? '#3a5a2a' : '#4a6a34');
-        px(c, 5, -4, '#ff4a5a');
-        break;
+      // a pale segmented grub with tiny legs
+      for (let i = 0; i < 4; i++) {
+        const yy = -6 + Math.round(Math.sin(t * 12 + i) * 1);
+        const col = i % 2 ? '#5a7a44' : '#6e8e52';
+        rect(c, -5 + i * 3, yy, 3, 5, col);
+        px(c, -5 + i * 3, yy, shade(col, 30));
+        px(c, -4 + i * 3, yy + 5, '#2a3a20');
       }
-      const skin = area === 1 ? '#5a7a5a' : area === 4 ? '#5a4a74' : '#74585a';
-      const metal = e.elite ? '#8a3a4a' : '#5a6680';
-      const step = e.state === 'chase' ? Math.sin(t * 16) : 0;
-      // backward-jointed legs
-      rect(c, -4 + Math.round(step * 2), -6, 2, 6, shade(skin, -10));
-      rect(c, 2 - Math.round(step * 2), -6, 2, 6, skin);
-      rect(c, -5 + Math.round(step * 2), -1, 3, 1, '#1a1a1a');
-      rect(c, 2 - Math.round(step * 2), -1, 3, 1, '#1a1a1a');
-      // hunched torso
-      rect(c, -5, -15, 10, 9, skin);
-      rect(c, -5, -15, 10, 2, metal);
-      rect(c, -6, -13, 2, 4, metal);
-      for (let i = 0; i < 3; i++) px(c, -3 + i * 2, -10, shade(skin, 20));
-      // head low and forward
-      rect(c, 3, -17, 6, 5, metal);
-      rect(c, 6, -15, 2, 1, blink ? '#ffffff' : eyeCol);
-      // claw arm
-      const raised = e.state === 'windup';
-      const strike = e.state === 'slash';
-      if (raised) {
-        line(c, 2, -14, 1, -22, skin);
-        line(c, 1, -22, 6, -24, '#c8d2e6');
-        line(c, 1, -22, 7, -21, '#c8d2e6');
-        glow(c, 4, -22, 8, '#ff4a5a', 0.4);
-      } else if (strike) {
-        line(c, 2, -12, 12, -8, skin);
-        line(c, 12, -8, 18, -10, '#ffffff');
-        line(c, 12, -8, 18, -6, '#ffffff');
+      eye(c, 6, -4, '#ff4a5a', 1, 1, 3, 0.5);
+      break;
+    }
+    case 'hunter': {
+      // a mutated worker: hunched, digitigrade legs, metal jaw, one huge bone claw
+      const skin = area === 1 ? '#5e7c5a' : area === 4 ? '#5e4e78' : area === 2 ? '#7a5a62' : '#76605a';
+      const K = steel(skin);
+      const M = steel(e.elite ? '#7a3440' : '#4e5a72');
+      const run = e.state === 'chase' || e.state === 'patrol';
+      const step = run ? Math.sin(t * (e.state === 'chase' ? 16 : 9) + ph) : 0;
+      const breath = Math.round(Math.sin(t * 3 + ph) * 0.6);
+      const crouch = e.state === 'windup' ? 1 : 0;
+      const y = crouch + breath;
+      // back leg, front leg (reverse knee)
+      const leg = (dx: number, sw: number, col: string) => {
+        const o = Math.round(sw * 2);
+        rect(c, dx + o, -7, 2, 3, col); // thigh
+        rect(c, dx - 1 + o, -4, 2, 3, shade(col, -12)); // shin back
+        rect(c, dx + o, -1, 4, 1, '#16181e'); // clawed foot
+        px(c, dx + 3 + o, -1, '#c8d2e6');
+      };
+      leg(-4, step, K.s);
+      // spine plates down the back
+      for (let i = 0; i < 4; i++) rect(c, -6 + i, -17 + y + i * 2, 2, 1, M.l);
+      // torso
+      rect(c, -5, -15 + y, 10, 9, K.b);
+      rect(c, -5, -15 + y, 10, 1, K.l);
+      rect(c, -5, -14 + y, 2, 7, K.l);
+      rect(c, 3, -14 + y, 2, 7, K.s);
+      // exposed ribs and a cable
+      for (let i = 0; i < 3; i++) rect(c, -2, -13 + y + i * 2, 4, 1, K.d);
+      line(c, -4, -9 + y, 1, -7 + y, '#2a2a34');
+      // rusty shoulder plate
+      rect(c, -6, -15 + y, 4, 3, M.b);
+      rect(c, -6, -15 + y, 4, 1, M.h);
+      leg(1, -step, K.b);
+      // head low and forward with a metal jaw
+      rect(c, 3, -18 + y, 7, 5, K.b);
+      rect(c, 3, -18 + y, 7, 1, K.l);
+      rect(c, 4, -14 + y, 6, 2, M.b);
+      rect(c, 4, -14 + y, 6, 1, M.l);
+      for (let i = 0; i < 3; i++) px(c, 5 + i * 2, -12 + y, '#e6dccb'); // teeth
+      eye(c, 7, -16 + y, eyeCol, 2, 1, tele ? 8 : 5, tele ? 0.75 : 0.5);
+      px(c, 5, -16 + y, shade(hostile, -60));
+      // the claw arm
+      if (e.state === 'windup') {
+        line(c, 2, -14 + y, 1, -22, K.b);
+        line(c, 1, -22, 6, -25, '#e6edf8');
+        line(c, 1, -22, 8, -22, '#e6edf8');
+        line(c, 0, -22, 4, -27, '#c8d2e6');
+        px(c, 6, -25, '#ffffff');
+        c.save();
+        c.globalCompositeOperation = 'lighter';
+        glow(c, 4, -23, 9, '#ff4a5a', 0.45);
+        c.restore();
+      } else if (e.state === 'slash') {
+        line(c, 2, -12 + y, 12, -9, K.b);
+        line(c, 12, -9, 19, -12, '#ffffff');
+        line(c, 12, -9, 19, -8, '#ffffff');
+        line(c, 12, -9, 18, -5, '#e6edf8');
+        c.save();
+        c.globalCompositeOperation = 'lighter';
+        c.strokeStyle = rgba('#ffffff', 0.5);
+        c.beginPath();
+        c.arc(8, -10, 11, -1.2, 0.6);
+        c.stroke();
+        c.restore();
       } else {
-        line(c, 2, -12, 7, -6, skin);
-        line(c, 7, -6, 10, -4, '#8a93ad');
+        line(c, 2, -12 + y, 6, -7 + y, K.b);
+        line(c, 6, -7 + y, 10, -5 + y, '#c8d2e6');
+        line(c, 6, -7 + y, 9, -3 + y, '#9aa7c4');
+        px(c, 10, -5 + y, '#ffffff');
       }
-      if (e.elite) rect(c, -5, -15, 10, 1, '#ff3d5e');
+      if (e.elite) for (let i = 0; i < 3; i++) rect(c, -3 + i * 2, -18 + y - (i % 2), 1, 2, '#ff2a4a'); // spikes
       break;
     }
     case 'turret': {
+      // a security turret: bolted base, armoured dome, aiming barrel, status light
+      const S = steel(e.elite ? '#6a3440' : '#4e5a72');
       c.save();
       if (e.ceiling) {
         c.scale(1, -1);
         c.translate(0, e.h);
       }
-      rect(c, -7, -4, 14, 4, '#2a3040');
-      rect(c, -7, -4, 14, 1, '#4a5470');
-      rect(c, -5, -9, 10, 5, e.elite ? '#7a3a4a' : '#5a6680');
-      rect(c, -5, -9, 10, 1, '#5a6480');
+      rect(c, -8, -3, 16, 3, '#1e222c');
+      rect(c, -8, -3, 16, 1, '#3e4660');
+      for (const bx of [-7, 6]) px(c, bx, -2, '#8a93ad'); // bolts
+      for (let i = 0; i < 4; i++) rect(c, -6 + i * 3, -1, 2, 1, i % 2 ? '#14161c' : '#d9b03a'); // hazard stripe
+      // dome
+      rect(c, -6, -9, 12, 6, S.b);
+      rect(c, -5, -10, 10, 1, S.l);
+      rect(c, -6, -9, 2, 5, S.l);
+      px(c, -5, -9, S.h);
+      rect(c, 4, -8, 2, 5, S.s);
+      rect(c, -2, -7, 4, 2, '#0b0d12'); // sensor slot
       c.restore();
-      // barrel aims at the target (in world space, so undo the flip)
       const ang = Math.atan2((e.aimY ?? fy) - (e.y + e.h / 2), ((e.aimX ?? fx) - fx) * (e.facing < 0 ? -1 : 1));
-      const cy = e.ceiling ? -e.h + 7 : -7;
-      line(c, 0, cy, Math.round(Math.cos(ang) * 8), Math.round(cy + Math.sin(ang) * 8), '#8a93ad');
-      rect(c, -1, cy - 1, 3, 3, e.state === 'charge' ? (blink ? '#ffffff' : '#ff4a5a') : '#ff6a3a');
-      if (e.state === 'charge') glow(c, 0, cy, 6 + e.stateT * 10, '#ff4a5a', 0.4);
+      const cy = e.ceiling ? -e.h + 6 : -6;
+      // barrel with a muzzle
+      const bx = Math.round(Math.cos(ang) * 9);
+      const byy = Math.round(cy + Math.sin(ang) * 9);
+      line(c, 0, cy, bx, byy, '#8a93ad');
+      line(c, 0, cy + 1, bx, byy + 1, '#3e4660');
+      rect(c, bx - 1, byy - 1, 2, 2, '#c8d2e6');
+      const charging = e.state === 'charge';
+      eye(c, -1, cy - 1, charging ? (blink ? '#ffffff' : '#ff3a4a') : hostile, 2, 2, charging ? 6 + e.stateT * 10 : 4, charging ? 0.6 : 0.35);
+      if (charging) {
+        c.save();
+        c.globalCompositeOperation = 'lighter';
+        glow(c, bx, byy, 3 + e.stateT * 8, '#ff3a4a', 0.5);
+        c.restore();
+      }
       break;
     }
     case 'stalker': {
+      // a tall, thin hunter with scythe arms and a cluster of eyes; nearly invisible while lurking
       const lurk = e.state === 'lurk' || e.state === 'idle';
-      c.globalAlpha *= lurk ? 0.35 + Math.abs(Math.sin(t * 2 + e.seed)) * 0.25 : 1;
-      const body = e.elite ? '#5a2a3a' : '#3a3450';
+      c.globalAlpha *= lurk ? 0.3 + Math.abs(Math.sin(t * 2 + ph)) * 0.25 : 1;
+      const S = steel(e.elite ? '#5a2436' : area === 4 ? '#3c2c58' : '#383250');
       const stretch = e.state === 'lunge' ? 4 : 0;
       const crouch = e.state === 'tell' ? 3 : 0;
-      // long thin legs
-      rect(c, -3, -9 + crouch, 1, 9 - crouch, body);
-      rect(c, 2, -9 + crouch, 1, 9 - crouch, body);
-      // body
-      rect(c, -3 - stretch, -20 + crouch, 7 + stretch, 11, body);
-      rect(c, -3 - stretch, -20 + crouch, 7 + stretch, 1, shade(body, 30));
-      // blade limbs
-      line(c, 3, -17 + crouch, 10 + stretch * 2, -12 + crouch, '#9aa7c4');
-      line(c, -3, -17 + crouch, -8, -10 + crouch, '#6a7896');
-      // head and eyes
-      rect(c, 1, -23 + crouch, 5, 4, body);
-      const eye = e.state === 'tell' ? (blink ? '#ffffff' : '#ff3d5e') : e.elite ? '#ff3d5e' : '#c45cff';
-      px(c, 4, -22 + crouch, eye);
-      px(c, 2, -22 + crouch, eye);
-      if (e.state === 'tell') glow(c, 3, -21 + crouch, 12, '#ff3d5e', 0.45);
+      const sway = Math.round(Math.sin(t * 2.5 + ph) * 0.6);
+      // stilt legs
+      rect(c, -3, -10 + crouch, 1, 10 - crouch, S.s);
+      rect(c, 2, -10 + crouch, 1, 10 - crouch, S.b);
+      px(c, -4, -1, S.d);
+      px(c, 3, -1, S.d);
+      px(c, -3, -6 + crouch, S.l); // knees
+      px(c, 2, -6 + crouch, S.l);
+      // long body, ribbed
+      rect(c, -3 - stretch, -21 + crouch + sway, 7 + stretch, 11, S.b);
+      rect(c, -3 - stretch, -21 + crouch + sway, 7 + stretch, 1, S.h);
+      rect(c, -3 - stretch, -20 + crouch + sway, 1, 9, S.l);
+      for (let i = 0; i < 4; i++) rect(c, -1, -18 + crouch + sway + i * 2, 3, 1, S.d);
+      // scythe arms: bone-white blades
+      const arm = (sx: number, ex: number, ey: number, col: string) => {
+        line(c, sx, -18 + crouch + sway, ex, ey, S.l);
+        line(c, ex, ey, ex + 4, ey - 4, col);
+        line(c, ex + 1, ey, ex + 5, ey - 3, shade(col, -40));
+        px(c, ex + 4, ey - 4, '#ffffff');
+      };
+      arm(-3, -7, -11 + crouch, '#8a93ad');
+      arm(3, 8 + stretch * 2, -13 + crouch, '#e6edf8');
+      // head with three eyes
+      rect(c, 1, -25 + crouch + sway, 6, 5, S.b);
+      rect(c, 1, -25 + crouch + sway, 6, 1, S.h);
+      const ec = e.state === 'tell' ? eyeCol : e.elite ? '#ff2a4a' : '#d070ff';
+      eye(c, 5, -23 + crouch + sway, ec, 1, 1, e.state === 'tell' ? 9 : 4, 0.6);
+      eye(c, 3, -23 + crouch + sway, ec, 1, 1, 3, 0.4);
+      px(c, 4, -22 + crouch + sway, ec);
+      if (e.state === 'lunge') for (let i = 0; i < 3; i++) rect(c, -12 - i * 3, -20 + i * 5, 6, 1, rgba('#ffffff', 0.4));
       break;
     }
     case 'shield': {
       const armor = e.elite ? '#6a2a3a' : area === 1 ? '#3e5a52' : area === 4 ? '#4a3a64' : '#4a5470';
-      const dark = shade(armor, -30);
-      const walk = Math.abs(e.vx) > 5 ? Math.sin(t * 10 + e.seed) : 0;
+      const S = steel(armor);
+      const walk = Math.abs(e.vx) > 5 ? Math.sin(t * 10 + ph) : 0;
       const tellK = e.state === 'bashTell' ? Math.min(1, e.stateT / 0.5) : 0;
       const bash = e.state === 'bash';
       const open = !e.guard;
-      // stocky legs
-      rect(c, -5 + Math.round(walk * 2), -7, 4, 7, dark);
-      rect(c, 1 - Math.round(walk * 2), -7, 4, 7, shade(armor, -16));
+      // stocky legs with knee plates
+      rect(c, -5 + Math.round(walk * 2), -7, 4, 7, S.d);
+      rect(c, 1 - Math.round(walk * 2), -7, 4, 7, S.s);
+      rect(c, -5 + Math.round(walk * 2), -6, 4, 1, S.l);
+      rect(c, 1 - Math.round(walk * 2), -6, 4, 1, S.h);
       rect(c, -6 + Math.round(walk * 2), -2, 5, 2, '#14161e');
       rect(c, 1 - Math.round(walk * 2), -2, 5, 2, '#14161e');
-      // bulky torso with plates
-      rect(c, -7, -19, 12, 12, armor);
-      rect(c, -7, -19, 12, 1, shade(armor, 35));
-      rect(c, -7, -18, 2, 10, shade(armor, 15));
-      rect(c, 3, -18, 2, 10, shade(armor, -18));
-      for (let i = 0; i < 3; i++) rect(c, -5, -15 + i * 3, 8, 1, shade(armor, -22));
-      // exposed reactor core: glows when the guard is down (the opening)
-      const coreCol = open ? (Math.floor(t * 12) % 2 ? '#ffffff' : '#ff6a3a') : '#5a2a1a';
+      // bulky torso with layered plates
+      rect(c, -7, -19, 12, 12, S.b);
+      rect(c, -7, -19, 12, 1, S.h);
+      rect(c, -7, -18, 2, 10, S.l);
+      rect(c, 3, -18, 2, 10, S.s);
+      for (let i = 0; i < 3; i++) rect(c, -5, -15 + i * 3, 8, 1, S.d);
+      for (const rx of [-6, 3]) px(c, rx, -17, S.h); // rivets
+      // shoulder pauldron
+      rect(c, -9, -20, 5, 4, S.l);
+      rect(c, -9, -20, 5, 1, S.h);
+      // reactor core: glows when the guard is down (the opening)
+      const coreCol = open ? (Math.floor(t * 12) % 2 ? '#ffffff' : '#ff6a3a') : '#4a2216';
       rect(c, -3, -14, 3, 3, coreCol);
-      if (open) glow(c, -2, -13, 10, '#ff6a3a', 0.5);
-      // helmet with a narrow slit
-      rect(c, -4, -24, 8, 6, shade(armor, 10));
-      rect(c, -4, -24, 8, 1, shade(armor, 40));
-      rect(c, 0, -22, 4, 1, blink ? '#ffffff' : eyeCol);
-      // the shield: a tall slab held in front
+      if (open) {
+        c.save();
+        c.globalCompositeOperation = 'lighter';
+        glow(c, -2, -13, 11, '#ff6a3a', 0.55);
+        c.restore();
+      }
+      // helmet with a narrow slit and a crest
+      rect(c, -4, -25, 8, 7, S.b);
+      rect(c, -4, -25, 8, 1, S.h);
+      rect(c, -4, -24, 1, 6, S.l);
+      rect(c, -2, -27, 3, 2, e.elite ? '#ff2a4a' : S.l);
+      eye(c, 0, -22, eyeCol, 4, 1, tele ? 8 : 4, tele ? 0.7 : 0.4);
+      // the shield: a tall slab with a rim, rivets and an energy strip
       const sx = open ? 2 : bash ? 8 : 6 - Math.round(tellK * 3);
-      const sy = open ? -12 : -23;
-      const sh = open ? 12 : 22;
+      const sy = open ? -12 : -24;
+      const sh = open ? 12 : 23;
       const sc = e.elite ? '#8a4a5a' : '#6a7896';
-      rect(c, sx, sy, 4, sh, sc);
-      rect(c, sx, sy, 4, 1, '#c8d2e6');
-      rect(c, sx + 3, sy + 1, 1, sh - 1, shade(sc, -30));
-      rect(c, sx + 1, sy + 1, 1, sh - 2, shade(sc, 25));
-      // emblem / energy strip on the shield face
-      const em = tellK > 0 && Math.floor(t * 16) % 2 ? '#ffffff' : e.elite ? '#ff3d5e' : AREAS[area].palette.accent;
+      rect(c, sx, sy, 5, sh, sc);
+      rect(c, sx, sy, 5, 1, '#d8e0f0');
+      rect(c, sx + 4, sy + 1, 1, sh - 1, shade(sc, -35));
+      rect(c, sx + 1, sy + 1, 1, sh - 2, shade(sc, 28));
+      px(c, sx + 2, sy + 2, '#d8e0f0');
+      px(c, sx + 2, sy + sh - 3, '#d8e0f0');
+      const em = tellK > 0 && Math.floor(t * 16) % 2 ? '#ffffff' : e.elite ? '#ff2a4a' : AREAS[area].palette.accent;
       if (!open) {
-        rect(c, sx + 2, sy + 6, 1, 10, em);
+        rect(c, sx + 3, sy + 5, 1, sh - 10, em);
         if (e.guard) {
           c.save();
           c.globalCompositeOperation = 'lighter';
-          glow(c, sx + 3, sy + sh / 2, 8, em, 0.25 + tellK * 0.4);
+          glow(c, sx + 3, sy + sh / 2, 9, em, 0.25 + tellK * 0.45);
           c.restore();
         }
       }
-      if (bash) for (let i = 0; i < 3; i++) rect(c, -14 - i * 4, -18 + i * 6, 6, 1, rgba('#ffffff', 0.5));
-      if (e.elite) rect(c, -7, -19, 12, 1, '#ff3d5e');
+      if (bash) for (let i = 0; i < 3; i++) rect(c, -15 - i * 4, -18 + i * 6, 6, 1, rgba('#ffffff', 0.5));
       break;
     }
     case 'void': {
+      // a floating orb of the Void: veined shell, iris, writhing tentacles, crackling aura
       const by = -8;
       const fade = e.state === 'blinkOut' ? 1 - e.stateT / 0.35 : e.state === 'blinkIn' ? Math.min(1, e.stateT / 0.3) : 1;
       c.globalAlpha *= Math.max(0.1, fade);
       c.save();
       c.globalCompositeOperation = 'lighter';
-      glow(c, 0, by, 14, '#c45cff', 0.3);
+      glow(c, 0, by, 16, e.elite ? '#ff2a6a' : '#c45cff', 0.32 + Math.sin(t * 4 + ph) * 0.08);
       c.restore();
-      // tentacles
-      for (let i = 0; i < 4; i++) {
-        let x = -4 + i * 3;
-        let y = by + 4;
-        for (let k = 0; k < 7; k++) {
-          x += Math.sin(t * 5 + i + k * 0.7) * 0.8;
+      for (let i = 0; i < 5; i++) {
+        let x = -5 + i * 2.5;
+        let y = by + 5;
+        for (let k = 0; k < 8; k++) {
+          x += Math.sin(t * 5 + i * 1.3 + k * 0.7) * 0.9;
           y += 1;
-          px(c, x, y, k < 3 ? '#5a2a78' : '#3a1a4a');
+          px(c, x, y, k < 2 ? '#7a3aa0' : k < 5 ? '#5a2a78' : '#3a1a4a');
         }
       }
-      // orb body
-      c.fillStyle = e.elite ? '#4a1030' : '#2a1035';
+      c.fillStyle = e.elite ? '#4a1030' : '#2a1038';
       c.beginPath();
       c.arc(0, by, 7, 0, Math.PI * 2);
       c.fill();
-      rect(c, -5, by - 6, 10, 1, '#6a3a8a');
-      // eye
-      rect(c, -2, by - 2, 5, 4, '#e0b3ff');
-      rect(c, 0 + Math.round(Math.sin(t) * 1), by - 1, 2, 2, e.state === 'cast' && blink ? '#ffffff' : '#1a0520');
-      if (e.state === 'cast') glow(c, 0, by, 6 + e.stateT * 16, '#c45cff', 0.5);
+      c.strokeStyle = '#7a4aa0';
+      c.lineWidth = 1;
+      c.beginPath();
+      c.arc(0, by, 6.5, Math.PI * 1.05, Math.PI * 1.75);
+      c.stroke();
+      // veins
+      line(c, -5, by + 2, -2, by + 5, '#5a2a78');
+      line(c, 4, by + 3, 2, by + 6, '#5a2a78');
+      // eye with an iris that follows the target
+      rect(c, -3, by - 3, 6, 5, '#efd2ff');
+      rect(c, -3, by - 3, 6, 1, '#ffffff');
+      const look = Math.round(Math.sin(t * 1.3 + ph));
+      rect(c, look, by - 2, 2, 3, e.state === 'cast' && blink ? '#ffffff' : '#7a1aa0');
+      px(c, look, by - 2, '#14001e');
+      if (e.state === 'cast') {
+        c.save();
+        c.globalCompositeOperation = 'lighter';
+        glow(c, 0, by, 6 + e.stateT * 18, '#d070ff', 0.55);
+        c.restore();
+      }
+      // sparks crackling on the surface
+      if (Math.sin(t * 13 + ph) > 0.7) px(c, Math.round(Math.cos(t * 7) * 7), by + Math.round(Math.sin(t * 7) * 7), '#ffffff');
       break;
     }
   }
+  // stunned: little stars circling the head
+  if (stun && !e.dead && e.type !== 'turret') {
+    for (let i = 0; i < 3; i++) {
+      const an = t * 6 + (i * Math.PI * 2) / 3;
+      px(c, Math.cos(an) * 6, -e.h - 4 + Math.sin(an) * 2, '#ffe066');
+    }
+  }
   c.restore();
+  // telegraph marker above the head: a clear red "!" while an attack is being wound up
+  if (tele && !e.dead && e.type !== 'void') {
+    const mx = fx;
+    const my = Math.round(e.y) - (e.type === 'turret' && e.ceiling ? -e.h - 10 : 12);
+    const col = blink ? '#ffffff' : '#ff3a4a';
+    rect(c, mx - 1, my - 5, 2, 4, col);
+    rect(c, mx - 1, my, 2, 1, col);
+    c.save();
+    c.globalCompositeOperation = 'lighter';
+    glow(c, mx, my - 2, 6, '#ff3a4a', 0.4);
+    c.restore();
+  }
 }
 
 // ================================================================== bosses
@@ -587,123 +743,242 @@ export function drawBoss(c: Ctx, e: Enemy, t: number) {
   if (e.dead) c.globalAlpha = Math.max(0, 1 - e.deathT);
   const tele = ['spitTell', 'leapTell', 'orbTell', 'dashTell', 'spawn', 'tentacles', 'sweep', 'summon'].includes(e.state) && e.stateT < 0.9;
   const blink = tele && Math.floor(t * 12) % 2 === 0;
-  if (e.boss === 'matka') {
-    c.translate(cx, Math.round(e.y + e.h));
-    if (e.facing < 0) c.scale(-1, 1);
-    const crouch = e.state === 'leapTell' ? 4 : 0;
-    const swell = e.state === 'spitTell' ? Math.round(e.stateT * 6) : 0;
-    const flesh = e.phase >= 2 ? '#7a3a48' : '#56704a';
-    // legs
-    for (let i = 0; i < 3; i++) {
-      const lx = -16 + i * 10;
-      const k = Math.sin(t * 6 + i) * 2;
-      line(c, lx, -12 + crouch, lx - 6, -4, '#2a2a22');
-      line(c, lx - 6, -4, lx - 4 + k, 0, '#2a2a22');
-      line(c, lx + 8, -12 + crouch, lx + 14, -4, '#2a2a22');
-      line(c, lx + 14, -4, lx + 12 - k, 0, '#2a2a22');
-    }
-    // abdomen with egg sacs
-    c.fillStyle = flesh;
-    c.beginPath();
-    c.ellipse(-8, -18 + crouch, 16 + swell * 0.4, 12 + swell * 0.3, 0, 0, Math.PI * 2);
-    c.fill();
-    for (let i = 0; i < 5; i++) {
-      const ex = -18 + i * 5;
-      const ey = -20 + crouch + (i % 2) * 5;
-      rect(c, ex, ey, 4, 4, '#7dff4a');
-      px(c, ex + 1, ey + 1, '#d8ffe6');
-    }
-    if (e.phase >= 2) for (let i = 0; i < 4; i++) line(c, -20 + i * 7, -28 + crouch, -16 + i * 7, -12 + crouch, '#ff4a5a');
-    // head
-    c.fillStyle = shade(flesh, 10);
-    c.beginPath();
-    c.ellipse(12, -20 + crouch, 10, 8, 0.2, 0, Math.PI * 2);
-    c.fill();
-    // mandibles
-    line(c, 18, -16 + crouch, 24, -12 + crouch, '#c8d2e6');
-    line(c, 18, -22 + crouch, 25, -24 + crouch, '#c8d2e6');
-    // eyes
-    for (let i = 0; i < 3; i++) rect(c, 12 + i * 3, -24 + crouch, 2, 2, blink ? '#ffffff' : '#ff4a5a');
-    if (swell) glow(c, 20, -18, 6 + swell * 2, '#7dff4a', 0.5);
-  } else if (e.boss === 'straznik') {
-    c.translate(cx, cy);
-    const rot = t * (e.phase >= 2 ? 1.6 : 0.8);
-    // thruster glow
+  const add = (fn: () => void) => {
     c.save();
     c.globalCompositeOperation = 'lighter';
-    glow(c, 0, 18, 14, '#3ee6ff', 0.35 + Math.sin(t * 20) * 0.1);
+    fn();
     c.restore();
-    // rotating armour ring
+  };
+  const blob = (x: number, y: number, rx: number, ry: number, col: string, rot = 0) => {
+    c.fillStyle = col;
+    c.beginPath();
+    c.ellipse(x, y, rx, ry, rot, 0, Math.PI * 2);
+    c.fill();
+  };
+  if (e.boss === 'matka') {
+    // ---------------------------------------------------------------- Matka Roju: the hive queen
+    c.translate(cx, Math.round(e.y + e.h));
+    if (e.facing < 0) c.scale(-1, 1);
+    const crouch = e.state === 'leapTell' ? 4 : e.state === 'rest' ? 2 : 0;
+    const swell = e.state === 'spitTell' ? Math.round(e.stateT * 6) : 0;
+    const rage = e.phase >= 2;
+    const chit = rage ? '#4a2a30' : '#2e3a2a'; // carapace
+    const chitL = shade(chit, 28);
+    const chitH = shade(chit, 55);
+    const sac = rage ? '#8a3a4a' : '#5e7a48';
+    const breathe = Math.sin(t * 2.2) * 1.2;
+    // six jointed legs (three per side, back pair darker)
+    for (let i = 0; i < 3; i++) {
+      const lx = -14 + i * 11;
+      const k = Math.sin(t * 6 + i * 1.7) * 2;
+      for (const [side, col] of [[-1, shade(chit, -18)], [1, chit]] as [number, string][]) {
+        const kx = lx + side * 7;
+        const ky = -20 + crouch;
+        line(c, lx, -13 + crouch, kx, ky, col); // femur up
+        line(c, lx + 1, -13 + crouch, kx + 1, ky, col);
+        line(c, kx, ky, kx + side * 4 + k * side, -1, col); // tibia down
+        px(c, kx, ky, chitH); // joint highlight
+        line(c, kx + side * 4 + k * side, -1, kx + side * 6 + k * side, 0, '#c8d2b8'); // claw
+      }
+    }
+    // abdomen: translucent egg sac with glowing eggs
+    blob(-10, -19 + crouch, 17 + swell * 0.4 + breathe * 0.3, 13 + swell * 0.3 + breathe * 0.2, shade(sac, -25));
+    blob(-10, -20 + crouch, 15 + swell * 0.4, 11 + swell * 0.3, sac);
+    blob(-14, -25 + crouch, 7, 3, shade(sac, 30)); // wet highlight
+    for (let i = 0; i < 7; i++) {
+      const ex = -21 + (i % 4) * 6 + (i > 3 ? 3 : 0);
+      const ey = -24 + crouch + (i > 3 ? 7 : 0);
+      const pulse = 0.5 + 0.5 * Math.sin(t * 3 + i);
+      blob(ex, ey, 2.2, 2.2, rage ? '#ff6a5a' : '#9dff6a');
+      px(c, ex - 1, ey - 1, '#ffffff');
+      add(() => glow(c, ex, ey, 5, rage ? '#ff4a3a' : '#7dff4a', 0.15 + pulse * 0.2));
+    }
+    // segment bands over the sac
+    for (let i = 0; i < 3; i++) {
+      c.strokeStyle = shade(sac, -40);
+      c.lineWidth = 1;
+      c.beginPath();
+      c.arc(-10 + i * 6, -20 + crouch, 12, -1.2, 1.2);
+      c.stroke();
+    }
+    if (rage) for (let i = 0; i < 4; i++) line(c, -22 + i * 7, -30 + crouch, -18 + i * 7, -12 + crouch, '#ff4a5a'); // glowing cracks
+    // thorax: armoured carapace plates
+    blob(6, -20 + crouch, 9, 9, chit);
+    rect(c, 0, -28 + crouch, 12, 2, chitL);
+    rect(c, 1, -28 + crouch, 4, 1, chitH);
+    for (let i = 0; i < 3; i++) line(c, 0 + i * 4, -27 + crouch, -1 + i * 4, -13 + crouch, shade(chit, -20));
+    // back spines
+    for (let i = 0; i < 4; i++) {
+      const sx = -2 + i * 4;
+      line(c, sx, -28 + crouch, sx - 2, -33 + crouch - (i % 2) * 2, chitL);
+      px(c, sx - 2, -33 + crouch - (i % 2) * 2, chitH);
+    }
+    // head with a crown of horns, many eyes and working mandibles
+    blob(15, -20 + crouch, 9, 7, shade(chit, 10), 0.2);
+    rect(c, 10, -26 + crouch, 9, 1, chitL);
+    line(c, 11, -26 + crouch, 9, -31 + crouch, chitL);
+    line(c, 15, -27 + crouch, 15, -32 + crouch, chitL);
+    line(c, 19, -25 + crouch, 22, -29 + crouch, chitL);
+    const ec = blink ? '#ffffff' : rage ? '#ff2a4a' : '#ff6a3a';
+    for (const [ex, ey] of [[13, -23], [16, -23], [19, -22], [14, -20], [18, -19]]) {
+      rect(c, ex, ey + crouch, 2, 1, ec);
+      add(() => glow(c, ex + 1, ey + crouch, 4, ec, 0.4));
+    }
+    const mand = Math.sin(t * 9) * 1.5 + (swell ? 2 : 0);
+    line(c, 20, -16 + crouch, 26, -12 + crouch + mand, '#d8d0c0');
+    line(c, 20, -18 + crouch, 27, -21 + crouch - mand, '#d8d0c0');
+    px(c, 26, -12 + crouch + mand, '#ffffff');
+    // acid drool
+    const dr = (t * 1.5) % 1;
+    px(c, 22, -14 + crouch + dr * 10, '#9dff6a');
+    if (swell) add(() => glow(c, 22, -18, 6 + swell * 2, '#7dff4a', 0.55));
+  } else if (e.boss === 'straznik') {
+    // ---------------------------------------------------------------- Strażnik Rdzenia: the core warden
+    c.translate(cx, cy);
+    const rot = t * (e.phase >= 2 ? 1.6 : 0.8);
+    const damaged = e.phase >= 3;
+    // thruster plume under the hull
+    add(() => {
+      glow(c, 0, 20, 16, '#3ee6ff', 0.35 + Math.sin(t * 20) * 0.1);
+      const fl = 6 + Math.floor((t * 30) % 4);
+      rect(c, -3, 15, 6, fl, 'rgba(160,240,255,0.55)');
+      rect(c, -1, 15, 2, fl + 3, 'rgba(255,255,255,0.6)');
+    });
+    // rotating armour ring: 8 plates with status lights and connecting struts
+    c.strokeStyle = '#1e2a40';
+    c.lineWidth = 2;
+    c.beginPath();
+    c.arc(0, 0, 19, 0, Math.PI * 2);
+    c.stroke();
     for (let i = 0; i < 8; i++) {
       const a = rot + (i / 8) * Math.PI * 2;
       const x = Math.cos(a) * 19;
       const y = Math.sin(a) * 19;
-      rect(c, x - 3, y - 3, 6, 6, i % 2 ? '#2a3a5a' : '#3a4a6a');
+      const lit = Math.sin(a + 2.4) > 0; // lit from the upper left
+      rect(c, x - 3, y - 3, 6, 6, lit ? '#4a5a7e' : '#2a3450');
+      rect(c, x - 3, y - 3, 6, 1, lit ? '#7a8cb0' : '#3a4664');
+      rect(c, x + 2, y - 2, 1, 5, '#1a2236');
       px(c, x, y, i % 2 ? '#3ee6ff' : '#ff4a5a');
+      if (i % 2) add(() => glow(c, x, y, 4, '#3ee6ff', 0.3));
     }
-    // core sphere
-    c.fillStyle = '#1a2236';
-    c.beginPath();
-    c.arc(0, 0, 14, 0, Math.PI * 2);
-    c.fill();
+    // hull sphere with shading and panel lines
+    blob(0, 0, 14, 14, '#1a2236');
+    blob(-3, -3, 10, 10, '#232e48');
+    blob(-6, -7, 4, 3, '#3a4a6e');
+    px(c, -7, -8, '#8a9cc0');
+    c.strokeStyle = '#0e1422';
+    c.lineWidth = 1;
+    for (const r of [8, 12]) {
+      c.beginPath();
+      c.arc(0, 0, r, 0.3, Math.PI - 0.3);
+      c.stroke();
+    }
+    // side cannons
+    for (const sx of [-1, 1]) {
+      rect(c, sx * 13 - (sx < 0 ? 4 : 0), 3, 4, 3, '#2a3450');
+      rect(c, sx * 17 - (sx < 0 ? 2 : 0), 4, 2, 1, '#ff4a5a');
+    }
+    // visor band and the iris lens that tracks the player
     rect(c, -12, -3, 24, 6, '#2a3450');
-    rect(c, -12, -3, 24, 1, '#4a5a80');
-    // eye lens tracks the player
+    rect(c, -12, -3, 24, 1, '#5a6a90');
+    rect(c, -12, 2, 24, 1, '#141a2a');
     const look = e.aimX !== undefined ? Math.sign((e.aimX ?? 0) - cx) * 3 : 0;
-    rect(c, -5 + look, -5, 10, 10, '#0a0c14');
-    const lens = e.state === 'laser' ? '#ff4a5a' : blink ? '#ffffff' : e.phase >= 3 ? '#ff4a5a' : '#3ee6ff';
-    rect(c, -3 + look, -3, 6, 6, lens);
+    rect(c, -5 + look, -5, 10, 10, '#07090f');
+    const lens = e.state === 'laser' ? '#ff3a4a' : blink ? '#ffffff' : damaged ? '#ff4a5a' : '#3ee6ff';
+    // aperture blades
+    for (let i = 0; i < 4; i++) {
+      const a = rot * 2 + (i * Math.PI) / 2;
+      line(c, look + Math.cos(a) * 4, Math.sin(a) * 4, look + Math.cos(a + 1.2) * 2, Math.sin(a + 1.2) * 2, '#2a3450');
+    }
+    rect(c, -2 + look, -2, 4, 4, lens);
     px(c, -2 + look, -2, '#ffffff');
-    c.save();
-    c.globalCompositeOperation = 'lighter';
-    glow(c, look, 0, 18, lens, 0.35);
-    c.restore();
+    add(() => glow(c, look, 0, e.state === 'laser' ? 26 : 18, lens, 0.4));
+    // battle damage in the last phase: exposed core, sparks
+    if (damaged) {
+      line(c, 6, -10, 10, -4, '#ff6a3a');
+      line(c, 10, -4, 8, 2, '#ff6a3a');
+      if (Math.random() < 0.4) px(c, 8 + Math.random() * 4, -6 + Math.random() * 6, '#ffe066');
+    }
   } else {
-    // Serce Pustki — a pulsing crystal heart wrapped in veins, with orbiting shards
+    // ---------------------------------------------------------------- Serce Pustki: the heart of the rift
     c.translate(cx, cy);
-    const beat = 1 + Math.max(0, Math.sin(t * (e.phase >= 3 ? 7 : 4))) * 0.08;
-    c.save();
-    c.globalCompositeOperation = 'lighter';
-    glow(c, 0, 0, 44 * beat, '#c45cff', 0.35);
-    glow(c, 0, 0, 20, '#ff4aff', 0.3);
-    c.restore();
+    const tired = e.state === 'tired';
+    const beat = 1 + Math.max(0, Math.sin(t * (e.phase >= 3 ? 7 : 4))) * (tired ? 0.02 : 0.08);
+    add(() => {
+      glow(c, 0, 0, 46 * beat, '#c45cff', tired ? 0.12 : 0.22);
+      glow(c, 0, 0, 22, '#ff4aff', tired ? 0.08 : 0.14);
+    });
+    // tendrils hanging below, swaying
+    for (let i = 0; i < 6; i++) {
+      let x = -12 + i * 5;
+      let y = 18;
+      for (let k = 0; k < 14; k++) {
+        x += Math.sin(t * 2.4 + i * 1.1 + k * 0.4) * 0.9;
+        y += 1.2;
+        px(c, x, y, k < 4 ? '#5a1a78' : k < 9 ? '#3a1050' : '#24082f');
+      }
+    }
+    // orbiting shards with trails
     for (let i = 0; i < 7; i++) {
       const a = t * 0.9 + (i / 7) * Math.PI * 2;
-      const r = 30 + Math.sin(t * 2 + i) * 3;
+      const r = 31 + Math.sin(t * 2 + i) * 3;
       const x = Math.cos(a) * r;
       const y = Math.sin(a) * r * 0.6;
-      c.fillStyle = i % 2 ? '#5a2a78' : '#3ee6ff';
+      const col = i % 2 ? '#7a3aa0' : '#3ee6ff';
+      add(() => {
+        for (let k = 1; k < 4; k++) {
+          const a2 = a - k * 0.08;
+          px(c, Math.cos(a2) * r, Math.sin(a2) * r * 0.6, rgba(col, 0.4 - k * 0.1));
+        }
+      });
+      c.fillStyle = col;
       c.beginPath();
       c.moveTo(x, y - 4);
       c.lineTo(x + 2, y);
       c.lineTo(x, y + 4);
       c.lineTo(x - 2, y);
       c.fill();
+      px(c, x - 1, y - 2, '#ffffff');
     }
+    c.save();
     c.scale(beat, beat);
-    c.fillStyle = '#2a0b35';
-    c.beginPath();
-    c.moveTo(0, -24);
-    c.lineTo(18, -8);
-    c.lineTo(14, 14);
-    c.lineTo(0, 26);
-    c.lineTo(-14, 14);
-    c.lineTo(-18, -8);
-    c.closePath();
-    c.fill();
-    c.fillStyle = '#5a1a78';
-    c.beginPath();
-    c.moveTo(0, -18);
-    c.lineTo(11, -6);
-    c.lineTo(8, 10);
-    c.lineTo(0, 18);
-    c.lineTo(-8, 10);
-    c.lineTo(-11, -6);
-    c.closePath();
-    c.fill();
-    for (let i = 0; i < 6; i++) line(c, 0, 0, Math.cos(i) * 16, Math.sin(i * 1.3) * 18, '#c45cff');
-    rect(c, -3, -4, 6, 8, blink ? '#ffffff' : e.state === 'tired' ? '#ffe066' : '#ff8aff');
+    // outer crystal: four facets with different shading (lit from the upper left)
+    const facet = (pts: number[][], col: string) => {
+      c.fillStyle = col;
+      c.beginPath();
+      c.moveTo(pts[0][0], pts[0][1]);
+      for (const q of pts.slice(1)) c.lineTo(q[0], q[1]);
+      c.closePath();
+      c.fill();
+    };
+    facet([[0, -26], [-19, -8], [0, 0]], '#4a1a68');
+    facet([[0, -26], [19, -8], [0, 0]], '#2e0d42');
+    facet([[-19, -8], [-15, 15], [0, 28], [0, 0]], '#3a1254');
+    facet([[19, -8], [15, 15], [0, 28], [0, 0]], '#22082f');
+    // edges
+    for (const [x0, y0, x1, y1] of [[0, -26, -19, -8], [0, -26, 19, -8], [-19, -8, -15, 15], [-15, 15, 0, 28]]) line(c, x0, y0, x1, y1, '#9a5ac8');
+    line(c, 0, -26, 0, 28, '#6a2a90');
+    // pulsing veins
+    const vein = tired ? '#5a2a80' : '#a040d0';
+    for (let i = 0; i < 6; i++) {
+      const a = i * 1.05 + 0.3;
+      c.globalAlpha = 0.5 + 0.5 * Math.sin(t * 4 - i);
+      line(c, 0, 0, Math.cos(a) * 15, Math.sin(a * 1.3) * 18, vein);
+      c.globalAlpha = 1;
+    }
+    // inner core / eye
+    facet([[0, -12], [8, -2], [5, 9], [0, 13], [-5, 9], [-8, -2]], '#3e0c58');
+    for (const [x0, y0, x1, y1] of [[0, -12, 8, -2], [0, -12, -8, -2]]) line(c, x0, y0, x1, y1, '#b46ae0');
+    const core = blink ? '#ffffff' : tired ? '#ffe066' : '#ff8aff';
+    rect(c, -2, -3, 4, 6, core);
     px(c, -1, -2, '#ffffff');
+    add(() => glow(c, 0, 0, tired ? 6 : 8, core, 0.25));
+    if (tired) {
+      // a visible crack: the moment to strike
+      line(c, -6, -14, -1, -4, '#ffe066');
+      line(c, -1, -4, -4, 4, '#ffe066');
+    }
+    c.restore();
   }
   c.restore();
 }

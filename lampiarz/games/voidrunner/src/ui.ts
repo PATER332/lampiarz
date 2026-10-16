@@ -11,6 +11,7 @@ import { WEATHER_INFO } from './game/weather';
 import type { GameEvent } from './game/types';
 import { background } from './render/background';
 import { Renderer } from './render/renderer';
+import { drawPlayer } from './render/sprites';
 import { AREAS } from './world/areas';
 import { ROOMS_PER_AREA } from './world/expedition';
 
@@ -135,10 +136,79 @@ export class App {
     g.addColorStop(1, 'rgba(0,0,0,0)');
     c.fillStyle = g;
     c.fillRect(0, 0, VIEW_W, VIEW_H);
+    if (this.mode === 'title') this.drawTitleScene(c, dt);
     this.renderer.oc.save();
     this.renderer.oc.setTransform(1, 0, 0, 1, 0, 0);
     this.renderer.oc.clearRect(0, 0, this.renderer.overlay.width, this.renderer.overlay.height);
     this.renderer.oc.restore();
+  }
+
+  /** The title scene: the Wanderer on a ledge above the city, cloak in the wind, rain and lightning. */
+  private titleRain: { x: number; y: number; v: number }[] = [];
+  private titleFlash = 0;
+  private titleBoltT = 3;
+  private drawTitleScene(c: CanvasRenderingContext2D, dt: number) {
+    const t = this.titleT;
+    if (!this.titleRain.length) for (let i = 0; i < 140; i++) this.titleRain.push({ x: Math.random() * VIEW_W, y: Math.random() * VIEW_H, v: 260 + Math.random() * 200 });
+    // lightning now and then
+    this.titleBoltT -= dt;
+    if (this.titleBoltT <= 0) {
+      this.titleBoltT = 5 + Math.random() * 6;
+      this.titleFlash = 1;
+    }
+    this.titleFlash = Math.max(0, this.titleFlash - dt * 2.5);
+    // rain behind the ledge
+    c.strokeStyle = 'rgba(170,195,235,0.35)';
+    c.lineWidth = 1;
+    c.beginPath();
+    for (const d of this.titleRain) {
+      d.y += d.v * dt;
+      d.x -= 50 * dt;
+      if (d.y > VIEW_H) {
+        d.y = -10;
+        d.x = Math.random() * (VIEW_W + 60);
+      }
+      c.moveTo(Math.round(d.x), Math.round(d.y));
+      c.lineTo(Math.round(d.x + 2), Math.round(d.y - 7));
+    }
+    c.stroke();
+    // the ledge: a broken concrete beam with an antenna and a red beacon
+    const LX = 300;
+    const LY = 206;
+    c.fillStyle = '#05060b';
+    c.fillRect(LX, LY, VIEW_W - LX, VIEW_H - LY);
+    c.fillRect(LX - 12, LY, 14, 6);
+    c.fillRect(LX - 18, LY + 2, 8, 3);
+    c.fillStyle = '#1c2030';
+    c.fillRect(LX - 12, LY, VIEW_W - LX + 12, 1);
+    c.fillStyle = '#05060b';
+    c.fillRect(440, LY - 46, 2, 46);
+    c.fillRect(434, LY - 30, 14, 1);
+    c.fillStyle = Math.floor(t * 1.2) % 2 ? '#ff3a4a' : '#4a1018';
+    c.fillRect(440, LY - 48, 2, 2);
+    // the Wanderer, standing at the edge, facing the city
+    // a stand-in body (the real player only exists during an expedition)
+    const p = {
+      x: 350, y: LY - 22, w: 10, h: 22, vx: -60 - Math.sin(t * 0.7) * 40, vy: 0, facing: -1, anim: 'idle', animT: t,
+      iframes: 0, hurtT: 0, attack: null, dead: false, deathT: 0, blocking: false, blockT: 0, blockFx: 0, parryFx: 0,
+      airJumps: 1, chargeT: 0, onGround: true,
+    } as unknown as Parameters<typeof drawPlayer>[1];
+    try {
+      // twice the in-game size: the hero is the centre of the title shot
+      c.save();
+      c.translate(355, LY);
+      c.scale(2, 2);
+      c.translate(-355, -LY);
+      drawPlayer(c, p, this.meta.cosmetic, 'blade', t, 0);
+      c.restore();
+    } catch {
+      /* the title must never stop animating */
+    }
+    // flash
+    if (this.titleFlash > 0) {
+      c.fillStyle = `rgba(220,232,255,${this.titleFlash * 0.25})`;
+      c.fillRect(0, 0, VIEW_W, VIEW_H);
+    }
   }
 
   // ================================================================== game flow
